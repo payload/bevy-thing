@@ -62,7 +62,6 @@ fn demo_assets_bit_pack(
 
 fn atlas_tinyview_hover(
     cursor: Res<MyCursorState>,
-    windows: Res<Windows>,
     atlantes: Res<Assets<TextureAtlas>>,
     mut query: Query<(
         &GlobalTransform,
@@ -86,8 +85,10 @@ fn atlas_tinyview_hover(
                 && br_pos.x >= cursor_pos.x
                 && br_pos.y >= cursor_pos.y
             {
-                sprite.color = Color::RED;
-            } else {
+                if sprite.color != Color::RED {
+                    sprite.color = Color::RED;
+                }
+            } else if sprite.color != Color::WHITE {
                 sprite.color = Color::WHITE;
             }
         }
