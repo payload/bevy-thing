@@ -1,5 +1,3 @@
-pub mod cursor;
-
 use bevy::prelude::*;
 use rand::prelude::*;
 
@@ -9,11 +7,19 @@ fn main() {
         .add_startup_system(setup)
         .add_startup_system(demo_assets_bit_pack)
         .add_system(atlas_tinyview_hover)
+        .add_system(cursor_system)
         .run();
 }
 
 fn setup(commands: &mut Commands) {
-    commands.spawn(Camera2dBundle::default());
+    let camera = commands
+        .spawn(Camera2dBundle::default())
+        .current_entity()
+        .unwrap();
+    commands.insert_resource(MyCursorState {
+        main_camera: camera,
+        world_pos: None,
+    });
 }
 
 fn demo_assets_bit_pack(
@@ -54,14 +60,73 @@ fn demo_assets_bit_pack(
     }
 }
 
-fn atlas_tinyview_hover(mut query: Query<(&GlobalTransform, &mut TextureAtlasSprite)>) {
-    let mut rng = rand::thread_rng();
-    for (transform, mut sprite) in query.iter_mut() {
-        if rng.gen::<f32>() < 0.1f32 {
-            sprite.color = Color::RED;
-        } else {
-            sprite.color = Color::WHITE;
+fn atlas_tinyview_hover(
+    cursor: Res<MyCursorState>,
+    windows: Res<Windows>,
+    atlantes: Res<Assets<TextureAtlas>>,
+    mut query: Query<(
+        &GlobalTransform,
+        &mut TextureAtlasSprite,
+        &Handle<TextureAtlas>,
+    )>,
+) {
+    if let Some(cursor_pos) = cursor.world_pos {
+        for (transform, mut sprite, atlas_handle) in query.iter_mut() {
+            let atlas = atlantes.get(atlas_handle).expect("get atlas");
+            let rect = atlas
+                .textures
+                .get(sprite.index as usize)
+                .expect("get atlas texture rect");
+            let pos = Vec2::from(transform.translation);
+            let size = Vec2::new(rect.width(), rect.height());
+            let tl_pos = pos - 0.5 * size;
+            let br_pos = pos + 0.5 * size;
+            if tl_pos.x <= cursor_pos.x
+                && tl_pos.y <= cursor_pos.y
+                && br_pos.x >= cursor_pos.x
+                && br_pos.y >= cursor_pos.y
+            {
+                sprite.color = Color::RED;
+            } else {
+                sprite.color = Color::WHITE;
+            }
         }
+    } else {
+        for (_transform, mut sprite, _atlas_handle) in query.iter_mut() {
+            if sprite.color != Color::WHITE {
+                sprite.color = Color::WHITE
+            }
+        }
+    }
+}
+
+struct MyCursorState {
+    main_camera: Entity,
+    world_pos: Option<Vec2>,
+}
+
+fn cursor_system(
+    mut state: ResMut<MyCursorState>,
+    windows: Res<Windows>,
+    q_camera: Query<&Transform>,
+) {
+    if let Some((window, cursor)) = windows.get_primary().and_then(|window| {
+        window
+            .cursor_position()
+            .and_then(|cursor| Some((window, cursor)))
+    }) {
+        let camera_transform = q_camera.get(state.main_camera).unwrap();
+        let window_size = Vec2::new(window.width() as f32, window.height() as f32);
+
+        // the default orthographic projection is in pixels from the center;
+        // just undo the translation
+        let pos = cursor - window_size * 0.5;
+
+        // apply the camera transform
+        let world_pos = camera_transform.compute_matrix() * pos.extend(0.0).extend(1.0);
+        state.world_pos = Some(Vec2::from(world_pos));
+    } else {
+        state.world_pos = None;
     }
 }
 
