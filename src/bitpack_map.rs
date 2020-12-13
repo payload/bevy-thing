@@ -1,6 +1,10 @@
 use bevy::prelude::*;
 
-use crate::{bitpack, bitpack::Bitpack, map_asset::MapAsset};
+use crate::{
+    bitpack,
+    bitpack::Bitpack,
+    map_asset::{MapAsset, MapTile},
+};
 
 #[test]
 fn public_interface() {
@@ -15,13 +19,6 @@ impl Plugin for BitpackMapPlugin {
     }
 }
 
-#[derive(Eq, PartialEq, Hash)]
-struct MapTile {
-    tile: String,
-    col: u32,
-    row: u32,
-}
-
 fn sync_system(
     commands: &mut Commands,
     // events
@@ -33,20 +30,23 @@ fn sync_system(
     map_asset: Res<Assets<MapAsset>>,
     atlas_asset: Res<Assets<TextureAtlas>>,
     // queries
-    query: Query<(Entity, &MapTile)>,
+    maptile_query: Query<(Entity, &MapTile)>,
+    // map_instances_query: Query<(&Transform, &Handle<MapAsset>)>,
 ) {
-    let entities = query.iter().collect::<Vec<_>>();
+    let entities = maptile_query.iter().collect::<Vec<_>>();
+    // let map_instances = map_instances_query.iter().collect::<Vec<_>>();
+    let events = event_reader.iter(&events).collect::<Vec<_>>();
 
-    for event in event_reader.iter(&events) {
+    for event in events.iter() {
         match event {
             AssetEvent::Created { handle } => {
                 let map = map_asset.get(handle).unwrap();
-                sync_spawn(map, &[], commands, &atlas_asset, &bitpack);
+                sync_spawn(map, handle, &[], commands, &atlas_asset, &bitpack);
             }
             AssetEvent::Modified { handle } => {
                 let map = map_asset.get(handle).unwrap();
                 let remains = sync_despawn(&entities, map, commands);
-                sync_spawn(map, &remains, commands, &atlas_asset, &bitpack);
+                sync_spawn(map, handle, &remains, commands, &atlas_asset, &bitpack);
             }
             AssetEvent::Removed { handle: _ } => {
                 sync_despawn(&entities, &MapAsset::default(), commands);
@@ -54,6 +54,17 @@ fn sync_system(
         }
     }
 }
+
+/*
+fn asset_event_handle(event: &AssetEvent<MapAsset>) -> Handle<MapAsset> {
+    use AssetEvent::*;
+    match event {
+        Created { handle } => handle.clone(),
+        Modified { handle } => handle.clone(),
+        Removed { handle } => handle.clone(),
+    }
+}
+*/
 
 type Coord = (u32, u32);
 
@@ -64,11 +75,8 @@ fn sync_despawn(
 ) -> Vec<Coord> {
     let mut remains = vec![];
 
-    for &(entity, maptile) in entities.iter() {
-        if map
-            .get(maptile.col, maptile.row)
-            .map_or(false, |m| m.to_string() == maptile.tile)
-        {
+    for &(entity, &maptile) in entities.iter() {
+        if map.contains(maptile) {
             remains.push((maptile.col, maptile.row));
         } else {
             commands.despawn_recursive(entity);
@@ -79,22 +87,22 @@ fn sync_despawn(
 }
 
 fn sync_spawn(
-    MapAsset { tiles, cols, rows }: &MapAsset,
+    map: &MapAsset,
+    map_handle: &Handle<MapAsset>,
     existing: &[Coord],
     commands: &mut Commands,
     atlases: &Assets<TextureAtlas>,
     bitpack: &Bitpack,
 ) {
-    for row in 0..*rows {
-        for col in 0..*cols {
-            if let Some(&tile) = tiles.get((col + row * cols) as usize) {
-                if tile != ' ' && !existing.contains(&(col, row)) {
+    for row in 0..map.rows {
+        for col in 0..map.cols {
+            if let Some(maptile) = map.get(col, row) {
+                if maptile.tile != ' ' as u8 && !existing.contains(&(col, row)) {
                     spawn_map_tile(
-                        tile.to_string(),
-                        col,
-                        row,
+                        maptile,
                         commands,
                         atlases.get_handle(&bitpack.atlas_handle),
+                        map_handle.clone(),
                     );
                 }
             }
@@ -103,20 +111,19 @@ fn sync_spawn(
 }
 
 fn spawn_map_tile(
-    tile: String,
-    col: u32,
-    row: u32,
+    maptile: MapTile,
     commands: &mut Commands,
     texture_atlas: Handle<TextureAtlas>,
+    map_handle: Handle<MapAsset>,
 ) {
-    let (index, color) = get_index_color_from_tile(tile.chars().next().unwrap());
+    let (index, color) = get_index_color_from_tile(maptile.tile as char);
     commands
-        .spawn((MapTile { tile, col, row },))
+        .spawn((maptile, map_handle))
         .with_bundle(SpriteSheetBundle {
             texture_atlas,
             sprite: TextureAtlasSprite { index, color },
             transform: Transform {
-                translation: Vec3::new(col as f32 * 16.0, row as f32 * -16.0, 0.0),
+                translation: Vec3::new(maptile.col as f32 * 16.0, maptile.row as f32 * -16.0, 0.0),
                 scale: Vec3::splat(1.0),
                 rotation: Quat::default(),
             },
