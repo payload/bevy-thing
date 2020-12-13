@@ -10,3 +10,5 @@ edition = "2018"
 bevy = { git = "https://github.com/bevyengine/bevy", branch = "master" }
 noise = "0.6"
 rand = "0.5"
+anyhow = "*"
+serde = "*"

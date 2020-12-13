@@ -1,28 +1,124 @@
 use bevy::prelude::*;
 
+use crate::{bitpack, map_asset::MapAsset};
+
 pub struct GameState {
     pub camera: Entity,
+    pub focus_entity: Entity,
+    pub map_handle: Handle<MapAsset>,
+    pub bitpack_handle: Handle<TextureAtlas>,
 }
 
-pub fn setup(commands: &mut Commands) {
+pub fn setup(
+    commands: &mut Commands,
+    asset_server: Res<AssetServer>,
+    atlases: ResMut<Assets<TextureAtlas>>,
+) {
     let camera = commands
         .spawn(Camera2dBundle::default())
         .current_entity()
         .unwrap();
 
-    commands.insert_resource(GameState {
-        camera,
-    });
-
-    commands.insert_resource(MyCursorState {
-        main_camera: camera,
-        world_pos: None,
-    });
-
-
+    commands
+        .insert_resource(GameState {
+            camera,
+            focus_entity: Entity::new(0),
+            map_handle: asset_server.load("demo1.map"),
+            bitpack_handle: bitpack::load_bitpack(asset_server, atlases),
+        })
+        .insert_resource(MyCursorState {
+            main_camera: camera,
+            world_pos: None,
+        });
 }
 
-pub fn demo_assets_bit_pack(
+pub fn mapi(
+    mut once: Local<bool>,
+    commands: &mut Commands,
+    game_state: Res<GameState>,
+    assets: Res<Assets<MapAsset>>,
+    atlases: Res<Assets<TextureAtlas>>,
+) {
+    if atlases.is_empty() {
+        return;
+    }
+    let atlas_handle = atlases.iter().next().unwrap().0;
+    let mut spawn = |index: u32, color: Color, c, r| {
+        println!("spawn {} {}", c, r);
+        let x = c as f32 * 16.0;
+        let y = r as f32 * 16.0;
+        commands.spawn(SpriteSheetBundle {
+            texture_atlas: atlases.get_handle(atlas_handle),
+            sprite: TextureAtlasSprite { index, color },
+            transform: Transform {
+                translation: Vec3::new(x, y, 0.0),
+                scale: Vec3::splat(1.0),
+                rotation: Quat::default(),
+            },
+            ..Default::default()
+        });
+    };
+
+    if !*once {
+        *once = true;
+        let map = assets.get(&game_state.map_handle).expect("map asset");
+        for row in 0..map.rows {
+            for col in 0..map.cols {
+                if let Some(tile) = map.tiles.get((col + row * map.cols) as usize) {
+                    match tile {
+                        'T' => spawn(bitpack::TREE1 as u32, Color::GREEN, col, row),
+                        'P' => spawn(bitpack::MAGICIAN1 as u32, Color::BLACK, col, row),
+                        _ => (),
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn demo_guy(
+    commands: &mut Commands,
+    atlases: Res<Assets<TextureAtlas>>,
+) {
+    if atlases.is_empty() {
+        return;
+    }
+    let atlas_handle = atlases.iter().next().unwrap().0;
+
+    // let texture_handle = asset_server.load("bit-pack/Tilesheet/monochrome_transparent.png");
+    // let size = Vec2::new(16.0, 16.0);
+    // let padding = Vec2::new(1.0, 1.0);
+    // let cols = 768 / 16;
+    // let rows = 352 / 16;
+    // let atlas = TextureAtlas::from_grid_with_padding(texture_handle, size, cols, rows, padding);
+    // let atlas_handle = atlases.add(atlas);
+    let atlas = atlases.get(atlas_handle).unwrap();
+    let spacing_factor = 1.5;
+
+    let index = bitpack::MAGICIAN1;
+    let rect = atlas.textures.get(index).unwrap();
+    let sprite = TextureAtlasSprite {
+        index: index as u32,
+        color: Color::BLACK,
+    };
+
+    commands.spawn(SpriteSheetBundle {
+        texture_atlas: atlases.get_handle(atlas_handle),
+        sprite,
+        transform: Transform {
+            translation: Vec3::new(
+                spacing_factor * (rect.min.x - atlas.size.x * 0.5),
+                -spacing_factor * (rect.min.y - atlas.size.y * 0.5),
+                0.0,
+            ),
+            scale: Vec3::splat(1.0),
+            rotation: Quat::default(),
+        },
+        ..Default::default()
+    });
+}
+
+pub fn _demo_assets_bit_pack(
     commands: &mut Commands,
     asset_server: Res<AssetServer>,
     mut atlases: ResMut<Assets<TextureAtlas>>,
@@ -60,7 +156,7 @@ pub fn demo_assets_bit_pack(
     }
 }
 
-pub fn atlas_tinyview_hover(
+pub fn _atlas_tinyview_hover(
     cursor: Res<MyCursorState>,
     atlantes: Res<Assets<TextureAtlas>>,
     mut query: Query<(
@@ -131,6 +227,6 @@ pub fn cursor_system(
     }
 }
 
-fn random_angle() -> f32 {
+fn _random_angle() -> f32 {
     2.0 * 3.14159 * (-0.5 + rand::random::<f32>())
 }

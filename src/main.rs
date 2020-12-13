@@ -2,18 +2,25 @@
 
 mod input;
 mod stuff;
+mod bitpack;
+mod map_asset;
 
 use bevy::{
-    diagnostic::{Diagnostics, FrameTimeDiagnosticsPlugin},
+    diagnostic::FrameTimeDiagnosticsPlugin,
     prelude::*,
 };
+use map_asset::{MapAsset, MapAssetLoader};
 
 fn main() {
     App::build()
         .add_plugins(DefaultPlugins)
         .add_startup_system(stuff::setup)
-        .add_startup_system(stuff::demo_assets_bit_pack)
-        .add_system(stuff::atlas_tinyview_hover)
+        .add_system(stuff::mapi)
+        .add_asset::<MapAsset>()
+        .init_asset_loader::<MapAssetLoader>()
+        .add_startup_system(stuff::demo_guy)
+        // .add_startup_system(stuff::demo_assets_bit_pack)
+        // .add_system(stuff::atlas_tinyview_hover)
         .add_system(stuff::cursor_system)
         .add_resource(input::MyInputState::default())
         .add_system_to_stage(stage::PRE_UPDATE, input::my_input_system)

@@ -5,8 +5,7 @@ use bevy::{
         keyboard::KeyboardInput,
         mouse::{MouseButtonInput, MouseMotion, MouseWheel},
     },
-    prelude::*,
-    render::camera::{Camera, OrthographicProjection},
+    prelude::*
 };
 
 #[derive(Default)]
@@ -69,38 +68,32 @@ pub fn my_input_system(
     }
 }
 
+#[test]
+fn xsystem() {
+    App::build().add_system(system);
+}
+
 pub fn system(
     game_state: Res<stuff::GameState>,
     time: Res<Time>,
     (keys, btns, windows): (Res<Input<KeyCode>>, Res<Input<MouseButton>>, Res<Windows>),
     mut transforms: Query<&mut Transform>,
 ) {
-    if keys.pressed(KeyCode::Space) {
-        // let mut camera = cameras.get_mut(game_state.camera).expect("camera component");
-
-        let mut trans = transforms
-            .get_mut(game_state.camera)
-            .expect("camera transform");
-
-        trans.scale *= 1.1;
-    }
-
     let pressed = |code| if keys.pressed(code) { 1.0 } else { 0.0 };
     let x = pressed(KeyCode::D) - pressed(KeyCode::A);
     let y = pressed(KeyCode::W) - pressed(KeyCode::S);
     let s = pressed(KeyCode::Plus) - pressed(KeyCode::Minus);
     let r = pressed(KeyCode::E) - pressed(KeyCode::Q);
     if x != 0.0 || y != 0.0 || s != 0.0 || r != 0.0 {
-        let mut transform = transforms
-            .get_mut(game_state.camera)
-            .expect("camera transform");
-
         let vec = Vec3::new(x, y, 0.0);
         let scale_power = 1.1_f32.powf(s);
         let scale = Vec3::new(scale_power, scale_power, 1.0);
         let trans = 40.0 * vec * time.delta_seconds();
         let angle = 3.14159 * 0.1 * r * time.delta_seconds();
 
+        let mut transform = transforms
+            .get_mut(game_state.camera)
+            .expect("camera transform");
         transform.scale *= scale;
         transform.translation += trans * scale;
         transform.rotate(Quat::from_rotation_z(angle));
