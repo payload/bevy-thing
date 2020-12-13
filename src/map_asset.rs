@@ -5,7 +5,7 @@ use bevy::{
 };
 use serde::Deserialize;
 
-#[derive(Debug, Deserialize, TypeUuid)]
+#[derive(Debug, Deserialize, TypeUuid, Default)]
 #[uuid = "39cadc56-aa9c-4543-8640-a018b71b5052"]
 pub struct MapAsset {
     pub tiles: Vec<char>,
@@ -30,24 +30,27 @@ impl AssetLoader for MapAssetLoader {
     ) -> BoxedFuture<'a, Result<(), anyhow::Error>> {
         Box::pin(async move {
             let string = String::from_utf8_lossy(bytes);
-            println!("XXX {}", &string);
             let rows = string.lines().count();
             let cols = string.lines().map(|l| l.len()).max().unwrap_or(0);
             let mut vec = Vec::with_capacity(rows * cols);
+
+            let mut acc_cols = 0;
             for c in string.chars() {
                 if c == '\n' {
-                    vec.extend(std::iter::repeat(' ').take(cols - vec.len() % cols));
+                    vec.extend(std::iter::repeat(' ').take(cols - acc_cols));
+                    acc_cols = 0;
                 } else {
                     vec.push(c);
+                    acc_cols += 1;
                 }
             }
+            vec.extend(std::iter::repeat(' ').take(cols - acc_cols));
 
-            let asset = MapAsset {
+            load_context.set_default_asset(LoadedAsset::new(MapAsset {
                 tiles: vec,
                 cols: cols as u32,
                 rows: rows as u32,
-            };
-            load_context.set_default_asset(LoadedAsset::new(asset));
+            }));
             Ok(())
         })
     }

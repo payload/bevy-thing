@@ -1,18 +1,14 @@
-use bevy::{prelude::*, utils::HashMap};
-use bitpack::Bitpack;
+use bevy::prelude::*;
 
-use crate::{bitpack, map_asset::MapAsset};
+use crate::{bitpack, map_asset};
 
 pub struct GameState {
     pub camera: Entity,
     pub focus_entity: Entity,
-    pub map_handle: Handle<MapAsset>,
+    pub map_handle: Handle<map_asset::MapAsset>,
 }
 
-pub fn setup(
-    commands: &mut Commands,
-    asset_server: Res<AssetServer>,
-) {
+pub fn setup(commands: &mut Commands, asset_server: Res<AssetServer>) {
     let camera = commands
         .spawn(Camera2dBundle::default())
         .current_entity()
@@ -29,79 +25,6 @@ pub fn setup(
             main_camera: camera,
             world_pos: None,
         });
-}
-
-pub struct MapTile {
-    tile: String,
-    col: u32,
-    row: u32
-}
-
-#[test]
-fn system_mapi() {
-    App::build().add_system(mapi);
-}
-
-pub fn mapi(
-    commands: &mut Commands,
-    game_state: Res<GameState>,
-    bitpack: Res<Bitpack>,
-    assets: Res<Assets<MapAsset>>,
-    atlases: Res<Assets<TextureAtlas>>,
-    tiles_query: Query<Entity, With<MapTile>>,
-    maptile_query: Query<&MapTile>,
-) {
-    if atlases.is_empty() {
-        return;
-    }
-
-    let map = assets.get(&game_state.map_handle).expect("map asset");
-
-    let get_index_color_from_tile = |c| match c {
-        'T' => (bitpack::TREE1 as u32, Color::GREEN),
-        'P' => (bitpack::MAGICIAN1 as u32, Color::BLACK),
-        _ => (0, Color::WHITE),
-    };
-
-    let mut entity_map = HashMap::<(u32, u32), Entity>::default();
-
-    for entity in tiles_query.iter() {
-        if let Ok(maptile) = maptile_query.get(entity) {
-            if map.get(maptile.col, maptile.row).map_or(true, |m| m.to_string() != maptile.tile) {
-                commands.despawn_recursive(entity);
-                println!("despawn {} {}", maptile.col, maptile.row);
-            } else {
-                entity_map.entry((maptile.col, maptile.row)).or_insert(entity);
-            }
-        }
-    }
-
-    let mut spawn = |tile: String, col, row| {
-        let (index, color) = get_index_color_from_tile(tile.chars().next().unwrap());
-        commands
-            .spawn((MapTile { tile, col, row },))
-            .with_bundle(SpriteSheetBundle {
-                texture_atlas: atlases.get_handle(&bitpack.atlas_handle),
-                sprite: TextureAtlasSprite { index, color },
-                transform: Transform {
-                    translation: Vec3::new(col as f32 * 16.0, row as f32 * -16.0, 0.0),
-                    scale: Vec3::splat(1.0),
-                    rotation: Quat::default(),
-                },
-                ..Default::default()
-            });
-    };
-
-    for row in 0..map.rows {
-        for col in 0..map.cols {
-            if let Some(&tile) = map.tiles.get((col + row * map.cols) as usize) {
-                if tile != ' ' && !entity_map.contains_key(&(col, row)) {
-                    println!("spawn {} {}", col, row);
-                    spawn(tile.to_string(), col, row);
-                }
-            }
-        }
-    }
 }
 
 pub fn demo_guy(commands: &mut Commands, atlases: Res<Assets<TextureAtlas>>) {

@@ -4,21 +4,21 @@ mod input;
 mod stuff;
 mod bitpack;
 mod map_asset;
+mod bitpack_map;
 
 use bevy::{
     diagnostic::FrameTimeDiagnosticsPlugin,
     prelude::*,
 };
-use map_asset::{MapAsset, MapAssetLoader};
 
 fn main() {
     App::build()
         .add_plugins(DefaultPlugins)
         .add_plugin(bitpack::BitpackPlugin)
+        .add_plugin(bitpack_map::BitpackMapPlugin)
         .add_startup_system(stuff::setup)
-        .add_system(stuff::mapi)
-        .add_asset::<MapAsset>()
-        .init_asset_loader::<MapAssetLoader>()
+        .add_asset::<map_asset::MapAsset>()
+        .init_asset_loader::<map_asset::MapAssetLoader>()
         .add_startup_system(stuff::demo_guy)
         // .add_startup_system(stuff::demo_assets_bit_pack)
         // .add_system(stuff::atlas_tinyview_hover)
