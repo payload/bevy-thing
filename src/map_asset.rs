@@ -13,6 +13,12 @@ pub struct MapAsset {
     pub rows: u32,
 }
 
+impl MapAsset {
+    pub fn get(&self, col: u32, row: u32) -> Option<char> {
+        self.tiles.get((col + self.cols * row) as usize).cloned()
+    }
+}
+
 #[derive(Default)]
 pub struct MapAssetLoader;
 
@@ -24,6 +30,7 @@ impl AssetLoader for MapAssetLoader {
     ) -> BoxedFuture<'a, Result<(), anyhow::Error>> {
         Box::pin(async move {
             let string = String::from_utf8_lossy(bytes);
+            println!("XXX {}", &string);
             let rows = string.lines().count();
             let cols = string.lines().map(|l| l.len()).max().unwrap_or(0);
             let mut vec = Vec::with_capacity(rows * cols);

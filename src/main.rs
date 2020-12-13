@@ -14,6 +14,7 @@ use map_asset::{MapAsset, MapAssetLoader};
 fn main() {
     App::build()
         .add_plugins(DefaultPlugins)
+        .add_plugin(bitpack::BitpackPlugin)
         .add_startup_system(stuff::setup)
         .add_system(stuff::mapi)
         .add_asset::<MapAsset>()

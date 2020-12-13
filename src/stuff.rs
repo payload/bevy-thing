@@ -1,4 +1,5 @@
-use bevy::prelude::*;
+use bevy::{prelude::*, utils::HashMap};
+use bitpack::Bitpack;
 
 use crate::{bitpack, map_asset::MapAsset};
 
@@ -6,25 +7,23 @@ pub struct GameState {
     pub camera: Entity,
     pub focus_entity: Entity,
     pub map_handle: Handle<MapAsset>,
-    pub bitpack_handle: Handle<TextureAtlas>,
 }
 
 pub fn setup(
     commands: &mut Commands,
     asset_server: Res<AssetServer>,
-    atlases: ResMut<Assets<TextureAtlas>>,
 ) {
     let camera = commands
         .spawn(Camera2dBundle::default())
         .current_entity()
         .unwrap();
 
+    asset_server.watch_for_changes().unwrap();
     commands
         .insert_resource(GameState {
             camera,
             focus_entity: Entity::new(0),
             map_handle: asset_server.load("demo1.map"),
-            bitpack_handle: bitpack::load_bitpack(asset_server, atlases),
         })
         .insert_resource(MyCursorState {
             main_camera: camera,
@@ -32,54 +31,80 @@ pub fn setup(
         });
 }
 
+pub struct MapTile {
+    tile: String,
+    col: u32,
+    row: u32
+}
+
+#[test]
+fn system_mapi() {
+    App::build().add_system(mapi);
+}
+
 pub fn mapi(
-    mut once: Local<bool>,
     commands: &mut Commands,
     game_state: Res<GameState>,
+    bitpack: Res<Bitpack>,
     assets: Res<Assets<MapAsset>>,
     atlases: Res<Assets<TextureAtlas>>,
+    tiles_query: Query<Entity, With<MapTile>>,
+    maptile_query: Query<&MapTile>,
 ) {
     if atlases.is_empty() {
         return;
     }
-    let atlas_handle = atlases.iter().next().unwrap().0;
-    let mut spawn = |index: u32, color: Color, c, r| {
-        println!("spawn {} {}", c, r);
-        let x = c as f32 * 16.0;
-        let y = r as f32 * 16.0;
-        commands.spawn(SpriteSheetBundle {
-            texture_atlas: atlases.get_handle(atlas_handle),
-            sprite: TextureAtlasSprite { index, color },
-            transform: Transform {
-                translation: Vec3::new(x, y, 0.0),
-                scale: Vec3::splat(1.0),
-                rotation: Quat::default(),
-            },
-            ..Default::default()
-        });
+
+    let map = assets.get(&game_state.map_handle).expect("map asset");
+
+    let get_index_color_from_tile = |c| match c {
+        'T' => (bitpack::TREE1 as u32, Color::GREEN),
+        'P' => (bitpack::MAGICIAN1 as u32, Color::BLACK),
+        _ => (0, Color::WHITE),
     };
 
-    if !*once {
-        *once = true;
-        let map = assets.get(&game_state.map_handle).expect("map asset");
-        for row in 0..map.rows {
-            for col in 0..map.cols {
-                if let Some(tile) = map.tiles.get((col + row * map.cols) as usize) {
-                    match tile {
-                        'T' => spawn(bitpack::TREE1 as u32, Color::GREEN, col, row),
-                        'P' => spawn(bitpack::MAGICIAN1 as u32, Color::BLACK, col, row),
-                        _ => (),
-                    }
+    let mut entity_map = HashMap::<(u32, u32), Entity>::default();
+
+    for entity in tiles_query.iter() {
+        if let Ok(maptile) = maptile_query.get(entity) {
+            if map.get(maptile.col, maptile.row).map_or(true, |m| m.to_string() != maptile.tile) {
+                commands.despawn_recursive(entity);
+                println!("despawn {} {}", maptile.col, maptile.row);
+            } else {
+                entity_map.entry((maptile.col, maptile.row)).or_insert(entity);
+            }
+        }
+    }
+
+    let mut spawn = |tile: String, col, row| {
+        let (index, color) = get_index_color_from_tile(tile.chars().next().unwrap());
+        commands
+            .spawn((MapTile { tile, col, row },))
+            .with_bundle(SpriteSheetBundle {
+                texture_atlas: atlases.get_handle(&bitpack.atlas_handle),
+                sprite: TextureAtlasSprite { index, color },
+                transform: Transform {
+                    translation: Vec3::new(col as f32 * 16.0, row as f32 * -16.0, 0.0),
+                    scale: Vec3::splat(1.0),
+                    rotation: Quat::default(),
+                },
+                ..Default::default()
+            });
+    };
+
+    for row in 0..map.rows {
+        for col in 0..map.cols {
+            if let Some(&tile) = map.tiles.get((col + row * map.cols) as usize) {
+                if tile != ' ' && !entity_map.contains_key(&(col, row)) {
+                    println!("spawn {} {}", col, row);
+                    spawn(tile.to_string(), col, row);
                 }
             }
         }
     }
 }
 
-pub fn demo_guy(
-    commands: &mut Commands,
-    atlases: Res<Assets<TextureAtlas>>,
-) {
+pub fn demo_guy(commands: &mut Commands, atlases: Res<Assets<TextureAtlas>>) {
     if atlases.is_empty() {
         return;
     }
