@@ -10,7 +10,13 @@ pub struct GameState {
 
 pub fn setup(commands: &mut Commands, asset_server: Res<AssetServer>) {
     let camera = commands
-        .spawn(Camera2dBundle::default())
+        .spawn(Camera2dBundle {
+            transform: Transform {
+                scale: Vec3::splat(0.25),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
         .current_entity()
         .unwrap();
 

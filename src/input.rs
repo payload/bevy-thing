@@ -86,7 +86,7 @@ pub fn system(
     let r = pressed(KeyCode::E) - pressed(KeyCode::Q);
     if x != 0.0 || y != 0.0 || s != 0.0 || r != 0.0 {
         let vec = Vec3::new(x, y, 0.0);
-        let scale_power = 1.1_f32.powf(s);
+        let scale_power = 1.1_f32.powf(-s);
         let scale = Vec3::new(scale_power, scale_power, 1.0);
         let trans = 40.0 * vec * time.delta_seconds();
         let angle = 3.14159 * 0.1 * r * time.delta_seconds();
