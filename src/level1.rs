@@ -1,8 +1,3 @@
-use bevy::{ecs::DynamicBundle, prelude::*};
-use rand::prelude::*;
-
-use crate::bitpack::Bitpack;
-
 /*
     a stone, you can pick it up, drop it again, throw it with some power, it clonks on the ground, it bings on the wall
     a mage, can pick things up, drop them, throw them, move
@@ -17,6 +12,11 @@ use crate::bitpack::Bitpack;
     ControlRandomMovement for controling MovementAbility things
     ControlRandomItemBasics for controling CanItemBasics things
 */
+
+use bevy::{ecs::DynamicBundle, prelude::*};
+use rand::prelude::*;
+
+use crate::bitpack::Bitpack;
 
 pub struct Level1Plugin;
 
