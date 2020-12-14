@@ -1,5 +1,6 @@
-use bevy::prelude::*;
+use bevy::{app::startup_stage, prelude::*};
 
+pub const PATH: &'static str = "bit-pack/Tilesheet/monochrome_transparent.png";
 pub const MAGICIAN1: usize = 24;
 pub const TREE1: usize = 51;
 
@@ -11,7 +12,7 @@ pub struct Bitpack {
 
 impl Plugin for BitpackPlugin {
     fn build(&self, app: &mut AppBuilder) {
-        app.add_startup_system(load_bitpack);
+        app.add_startup_system_to_stage(startup_stage::PRE_STARTUP, load_bitpack);
     }
 }
 
@@ -20,7 +21,7 @@ fn load_bitpack(
     asset_server: Res<AssetServer>,
     mut atlases: ResMut<Assets<TextureAtlas>>,
 ) {
-    let texture_handle = asset_server.load("bit-pack/Tilesheet/monochrome_transparent.png");
+    let texture_handle = asset_server.load(PATH);
     let atlas_handle = atlases.add(TextureAtlas::from_grid_with_padding(
         texture_handle,
         Vec2::new(16.0, 16.0),

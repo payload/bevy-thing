@@ -1,34 +1,30 @@
-#![feature(bool_to_option)]
-
-mod input;
-mod stuff;
 mod bitpack;
-mod map_asset;
 mod bitpack_map;
+mod level1;
 
-use bevy::{
-    diagnostic::FrameTimeDiagnosticsPlugin,
-    prelude::*,
-};
+mod map_asset;
+mod stuff;
+
+use bevy::prelude::*;
+use bitpack::BitpackPlugin;
+use level1::Level1Plugin;
 
 fn main() {
+    if let Some(command) = std::env::args().nth(1) {
+        match command.as_str() {
+            "level1" => level1(),
+            "level2" => level2(),
+            _ => (),
+        }
+    }
+}
+
+fn level1() {
     App::build()
         .add_plugins(DefaultPlugins)
-        .add_plugin(bitpack::BitpackPlugin)
-        .add_plugin(bitpack_map::BitpackMapPlugin)
-        .add_startup_system(stuff::setup)
-        .add_asset::<map_asset::MapAsset>()
-        .init_asset_loader::<map_asset::MapAssetLoader>()
-        .add_startup_system(stuff::demo_guy)
-        // .add_startup_system(stuff::demo_assets_bit_pack)
-        // .add_system(stuff::atlas_tinyview_hover)
-        .add_system(stuff::cursor_system)
-        .add_resource(input::MyInputState::default())
-        .add_system_to_stage(stage::PRE_UPDATE, input::my_input_system)
-        .add_system(input::system)
-        .add_system(bevy::input::system::exit_on_esc_system)
-        .add_plugin(FrameTimeDiagnosticsPlugin)
-        // .add_system(|diagnostics: Res<Diagnostics>| println!("{:?}", diagnostics.get(FrameTimeDiagnosticsPlugin::FPS).unwrap().average()))
-        // .add_system_to_stage(stage::LAST, |mut ev: ResMut<Events<AppExit>>| ev.send(AppExit))
+        .add_plugin(BitpackPlugin)
+        .add_plugin(Level1Plugin)
         .run();
 }
+
+fn level2() {}
