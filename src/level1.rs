@@ -13,6 +13,8 @@
     ControlRandomItemBasics for controling CanItemBasics things
 */
 
+use std::cmp::Ordering;
+
 use bevy::{ecs::DynamicBundle, prelude::*};
 use rand::prelude::*;
 
@@ -36,24 +38,24 @@ pub struct Stone;
 pub struct Mage;
 
 pub struct CanBeItemBasics {
-    pick_up: bool,
-    drop: bool,
-    throw: bool,
+    pub pick_up: bool,
+    pub drop: bool,
+    pub throw: bool,
 }
 
 pub struct CanItemBasics {
-    pick_up: bool,
-    drop: bool,
-    throw: bool,
-    picked_up: Option<Entity>,
+    pub pick_up: bool,
+    pub drop: bool,
+    pub throw: bool,
+    pub picked_up: Option<Entity>,
 }
 
 pub struct SoundOnContact {
-    _sound_map: Vec<(ContactType, SoundType)>,
+    pub _sound_map: Vec<(ContactType, SoundType)>,
 }
 
 impl SoundOnContact {
-    fn new(sound_map: Vec<(ContactType, SoundType)>) -> Self {
+    pub fn new(sound_map: Vec<(ContactType, SoundType)>) -> Self {
         Self {
             _sound_map: sound_map,
         }
@@ -70,29 +72,29 @@ pub enum SoundType {
 }
 
 pub struct Kinematics {
-    vel: Vec3,
-    drag: f32,
+    pub vel: Vec3,
+    pub drag: f32,
 }
 
 pub struct MovementAbility {
-    top_speed: f32,
+    pub top_speed: f32,
 }
 
 pub struct ControlRandomMovement {
-    timer: Timer,
+    pub timer: Timer,
 }
 
 pub struct ControlRandomItemBasics {
-    timer: Timer,
+    pub timer: Timer,
 }
 
 pub struct Carried {
-    owner: Entity,
-    offset: Transform,
+    pub owner: Entity,
+    pub offset: Transform,
 }
 
 pub struct Thrown {
-    vel: Vec3,
+    pub vel: Vec3,
 }
 
 impl Thrown {
@@ -126,7 +128,7 @@ pub fn setup(commands: &mut Commands, bitpack: Res<Bitpack>) {
         CanItemBasics {
             pick_up: true,
             drop: true,
-            throw: false,
+            throw: true,
             picked_up: None,
         },
         Kinematics {
@@ -158,7 +160,7 @@ pub fn setup(commands: &mut Commands, bitpack: Res<Bitpack>) {
         });
 }
 
-fn dress_stone(atlas: Handle<TextureAtlas>) -> impl DynamicBundle {
+pub fn dress_stone(atlas: Handle<TextureAtlas>) -> impl DynamicBundle {
     SpriteSheetBundle {
         texture_atlas: atlas,
         sprite: TextureAtlasSprite {
@@ -169,11 +171,11 @@ fn dress_stone(atlas: Handle<TextureAtlas>) -> impl DynamicBundle {
     }
 }
 
-fn dress_mage(atlas: Handle<TextureAtlas>) -> impl DynamicBundle {
+pub fn dress_mage(atlas: Handle<TextureAtlas>) -> impl DynamicBundle {
     SpriteSheetBundle {
         texture_atlas: atlas,
         sprite: TextureAtlasSprite {
-            index: 24,
+            index: 24 + 48,
             color: Color::BLACK,
         },
         ..Default::default()
@@ -212,69 +214,71 @@ pub fn control_random_item_basics_system(
     commands: &mut Commands,
     time: Res<Time>,
     mut active_query: Query<(Entity, Mut<ControlRandomItemBasics>, Mut<CanItemBasics>)>,
-    mut item_query: Query<(Entity, Mut<CanBeItemBasics>)>,
+    can_be_item_query: Query<&CanBeItemBasics>,
+    not_carried_items: Query<(Entity, &CanBeItemBasics), Without<Carried>>,
 ) {
     let dt = time.delta_seconds();
+    let mut pickups = None;
 
-    for (active, mut control, can) in active_query.iter_mut() {
+    for (owner, mut control, mut can) in active_query.iter_mut() {
         if control.timer.tick(dt).finished() {
             if let Some(item) = can.picked_up {
-                control_drop_or_throw_item(commands, can, item, &mut item_query);
+                if let Ok(can_be) = can_be_item_query.get(item) {
+                    let mut rng = rand::thread_rng();
+                    let drop = can.drop && can_be.drop;
+                    let throw = can.throw && can_be.throw;
+
+                    if (drop && throw && rng.gen()) || (drop && !throw) {
+                        can.picked_up = None;
+                        commands.remove_one::<Carried>(item);
+                    } else if throw {
+                        can.picked_up = None;
+                        commands.insert_one(item, Thrown::new(rng.random_vec2d() * 40.0));
+                        commands.remove_one::<Carried>(item);
+                    }
+                } else {
+                    can.picked_up = None;
+                }
             } else if can.pick_up {
-                control_pick_up_item(commands, active, can, &mut item_query);
+                let pickups = pickups
+                    .get_or_insert_with(|| shuffled_pickable_items(&mut not_carried_items.iter()));
+
+                if let Some(item) = pickups.pop() {
+                    let offset = Transform::from_translation(Vec3::new(0.0, 6.0, 0.0));
+                    can.picked_up = Some(item.clone());
+                    commands.insert_one(item, Carried { owner, offset });
+                }
             }
         }
     }
 }
 
-fn control_drop_or_throw_item(
-    commands: &mut Commands,
-    mut can: Mut<CanItemBasics>,
-    item: Entity,
-    item_query: &mut Query<(Entity, Mut<CanBeItemBasics>)>,
-) {
+fn shuffled_pickable_items(
+    items: &mut dyn Iterator<Item = (Entity, &CanBeItemBasics)>,
+) -> Vec<Entity> {
     let mut rng = rand::thread_rng();
-    let mut can_be = item_query
-        .get_component_mut::<CanBeItemBasics>(item)
-        .unwrap();
-    let drop = can.drop && can_be.drop;
-    let throw = can.throw && can_be.throw;
-
-    if (drop && throw && rng.gen()) || (drop && !throw) {
-        can.picked_up = None;
-        can_be.pick_up = true;
-        commands.remove_one::<Carried>(item);
-    } else if throw {
-        can.picked_up = None;
-        can_be.pick_up = true;
-        commands.insert_one(item, Thrown::new(rng.random_vec2d() * 40.0));
-        commands.remove_one::<Carried>(item);
-    }
-}
-
-fn control_pick_up_item(
-    commands: &mut Commands,
-    owner: Entity,
-    mut can: Mut<CanItemBasics>,
-    item_query: &mut Query<(Entity, Mut<CanBeItemBasics>)>,
-) {
-    let pick_up = item_query.iter_mut().filter(|(_, c)| c.pick_up).next();
-    let offset = Transform::from_translation(Vec3::new(0.0, 6.0, 0.0));
-
-    if let Some((item, mut can_be)) = pick_up {
-        can.picked_up = Some(item.clone());
-        can_be.pick_up = false;
-        commands.insert_one(item, Carried { owner, offset });
-    }
+    let mut pickups: Vec<Entity> = items.filter_map(|(e, c)| c.pick_up.then_some(e)).collect();
+    pickups.sort_unstable_by(|_, _| {
+        if rng.gen() {
+            Ordering::Less
+        } else {
+            Ordering::Greater
+        }
+    });
+    pickups
 }
 
 pub fn carry_system(
-    mut query: Query<(&Carried, Mut<Transform>)>,
+    commands: &mut Commands,
+    mut query: Query<(Entity, &Carried, Mut<Transform>)>,
     transform: Query<&Transform, Without<Carried>>,
 ) {
-    for (carried, mut trans) in query.iter_mut() {
-        let owner_trans = transform.get(carried.owner).expect("owner has transform");
-        trans.translation = owner_trans.translation + carried.offset.translation;
+    for (item, carried, mut trans) in query.iter_mut() {
+        if let Ok(owner_trans) = transform.get(carried.owner) {
+            trans.translation = owner_trans.translation + carried.offset.translation;
+        } else {
+            commands.remove_one::<Carried>(item);
+        }
     }
 }
 
