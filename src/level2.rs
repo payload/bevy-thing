@@ -22,15 +22,15 @@ pub struct Level2Plugin;
 
 impl Plugin for Level2Plugin {
     fn build(&self, app: &mut AppBuilder) {
-        app.add_startup_system(setup)
-            .add_startup_system(add_camera)
-            .add_system(kinematic_system)
-            .add_system(control_random_movement_system)
-            .add_system(control_random_item_basics_system)
-            .add_system(carry_system)
-            .add_system(throw_system)
-            .add_system(sync_tilemap_spawner_system)
-            .add_system(tilemap_spawn_handler_system::<EntityFactory>)
+        app.add_startup_system(setup.system())
+            .add_startup_system(add_camera.system())
+            .add_system(kinematic_system.system())
+            .add_system(control_random_movement_system.system())
+            .add_system(control_random_item_basics_system.system())
+            .add_system(carry_system.system())
+            .add_system(throw_system.system())
+            .add_system(sync_tilemap_spawner_system.system())
+            .add_system(EntityFactory::system.system())
             .add_asset::<TileMap>()
             .init_asset_loader::<TileMapLoader>()
             .add_event::<TileMapSpawnEvent>();
@@ -38,6 +38,12 @@ impl Plugin for Level2Plugin {
 }
 
 struct EntityFactory;
+
+impl FromResources for EntityFactory {
+    fn from_resources(_resources: &Resources) -> Self {
+        Self
+    }
+}
 
 impl EntityFactory {
     fn spawn_mage(bundle: TileBundle, commands: &mut Commands, bitpack: &Res<Bitpack>) {
@@ -107,12 +113,23 @@ impl EntityFactory {
             })
             .with_bundle(bundle);
     }
-}
 
-impl SpawnHandler for EntityFactory {
-    type Args = (&'static mut Commands, Res<'static, Bitpack>);
+    fn system(
+        factory: Local<EntityFactory>,
+        commands: &mut Commands,
+        bitpack: Res<Bitpack>,
+        mut event_reader: Local<EventReader<TileMapSpawnEvent>>,
+        events: Res<Events<TileMapSpawnEvent>>,
+    ) {
+        for event in event_reader.iter(&events) {
+            match event {
+                TileMapSpawnEvent::Spawn(bundle) => Self::spawn(*bundle, commands, &bitpack),
+                TileMapSpawnEvent::Despawn(a_tile) => Self::despawn(*a_tile, commands),
+            };
+        }
+    }
 
-    fn spawn(bundle: TileBundle, (commands, bitpack): &mut Self::Args) {
+    fn spawn(bundle: TileBundle, commands: &mut Commands, bitpack: &Res<Bitpack>) {
         println!("MyHandler::spawn {}", bundle.2.translation);
 
         match bundle.0 .0 as char {
@@ -124,7 +141,7 @@ impl SpawnHandler for EntityFactory {
         }
     }
 
-    fn despawn(a_tile: Entity, (commands, _bitpack): &mut Self::Args) {
+    fn despawn(a_tile: Entity, commands: &mut Commands) {
         println!("MyHandler::despawn");
         commands.despawn_recursive(a_tile);
     }
@@ -160,7 +177,7 @@ impl TileMapSpawner {
         }
     }
 
-    fn spawn(a_spawner: Entity, spawner: &TileMapSpawner, tile: &Tile) -> TileMapSpawnEvent {
+    pub fn spawn(a_spawner: Entity, spawner: &TileMapSpawner, tile: &Tile) -> TileMapSpawnEvent {
         TileMapSpawnEvent::Spawn((
             *tile,
             Parent(a_spawner),
@@ -173,7 +190,7 @@ impl TileMapSpawner {
         ))
     }
 
-    fn despawn(a_tile: Entity) -> TileMapSpawnEvent {
+    pub fn despawn(a_tile: Entity) -> TileMapSpawnEvent {
         TileMapSpawnEvent::Despawn(a_tile)
     }
 }
@@ -237,26 +254,6 @@ fn sync_tilemap_spawner_system(
             }
             Event::Removed => todo!(),
         }
-    }
-}
-
-trait SpawnHandler {
-    type Args;
-
-    fn spawn(bundle: TileBundle, args: &mut Self::Args);
-    fn despawn(a_tile: Entity, args: &mut Self::Args);
-}
-
-fn tilemap_spawn_handler_system<T: SpawnHandler>(
-    mut args: T::Args,
-    mut event_reader: Local<EventReader<TileMapSpawnEvent>>,
-    events: Res<Events<TileMapSpawnEvent>>,
-) {
-    for event in event_reader.iter(&events) {
-        match event {
-            TileMapSpawnEvent::Spawn(bundle) => T::spawn(*bundle, &mut args),
-            TileMapSpawnEvent::Despawn(a_tile) => T::despawn(*a_tile, &mut args),
-        };
     }
 }
 

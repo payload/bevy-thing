@@ -15,7 +15,7 @@ pub struct BitpackMapPlugin;
 
 impl Plugin for BitpackMapPlugin {
     fn build(&self, app: &mut AppBuilder) {
-        app.add_system(sync_system);
+        app.add_system(sync_system.system());
     }
 }
 

@@ -24,13 +24,13 @@ pub struct Level1Plugin;
 
 impl Plugin for Level1Plugin {
     fn build(&self, app: &mut AppBuilder) {
-        app.add_startup_system(setup)
-            .add_startup_system(add_camera)
-            .add_system(kinematic_system)
-            .add_system(control_random_movement_system)
-            .add_system(control_random_item_basics_system)
-            .add_system(carry_system)
-            .add_system(throw_system);
+        app.add_startup_system(setup.system())
+            .add_startup_system(add_camera.system())
+            .add_system(kinematic_system.system())
+            .add_system(control_random_movement_system.system())
+            .add_system(control_random_item_basics_system.system())
+            .add_system(carry_system.system())
+            .add_system(throw_system.system());
     }
 }
 

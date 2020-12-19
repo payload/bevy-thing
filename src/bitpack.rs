@@ -12,7 +12,7 @@ pub struct Bitpack {
 
 impl Plugin for BitpackPlugin {
     fn build(&self, app: &mut AppBuilder) {
-        app.add_startup_system_to_stage(startup_stage::PRE_STARTUP, load_bitpack);
+        app.add_startup_system_to_stage(startup_stage::PRE_STARTUP, load_bitpack.system());
     }
 }
 
