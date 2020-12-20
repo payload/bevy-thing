@@ -8,7 +8,6 @@ mod level2;
 mod level3;
 
 mod map_asset;
-mod stuff;
 
 use bevy::prelude::*;
 use bitpack::BitpackPlugin;

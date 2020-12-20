@@ -115,7 +115,6 @@ impl EntityFactory {
     }
 
     fn system(
-        factory: Local<EntityFactory>,
         commands: &mut Commands,
         bitpack: Res<Bitpack>,
         mut event_reader: Local<EventReader<TileMapSpawnEvent>>,
