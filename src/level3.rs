@@ -8,13 +8,15 @@
 
 use bevy::prelude::*;
 use bevy_rapier2d::{
-    na::*,
+    na::Point2,
     physics::*,
     rapier::{dynamics::*, geometry::*},
     render::*,
 };
+use level1::{CanBeItemBasics, ContactType, Kinematics, SoundOnContact, SoundType, Stone};
+use level2::{MageBundle, TileBundle, TileMap, TileMapLoader, TileMapSpawnEvent, TileMapSpawner};
 
-use crate::level2::*;
+use crate::{bitpack::Bitpack, level1, level2};
 
 pub struct Level3Plugin;
 
@@ -23,13 +25,21 @@ impl Plugin for Level3Plugin {
         app /**/
             .add_plugin(RapierPhysicsPlugin)
             .add_plugin(RapierRenderPlugin)
-            .add_startup_system(setup.system())
-            .add_system(print_events.system())
             //
-            .add_system(sync_tilemap_spawner_system.system())
+            .add_startup_system(level1::add_camera.system())
+            .add_startup_system(add_physics_example.system())
+            .add_startup_system(add_tilemap.system())
+            //
+            .add_system(print_events.system())
+            .add_system(spawn_from_tilemap.system())
+            // TODO tilemap plugin
+            .add_system(level2::sync_tilemap_spawner_system.system())
             .add_asset::<TileMap>()
             .init_asset_loader::<TileMapLoader>()
             .add_event::<TileMapSpawnEvent>()
+            //
+            .add_system(level1::control_random_movement_system.system())
+            .add_system(level1::kinematic_system.system())
             /* end */;
     }
 }
@@ -48,9 +58,84 @@ impl Plugin for Level3Plugin {
     Entity::from_bits(b1.user_data as u64)
 */
 
-fn setup(commands: &mut Commands, mut config: ResMut<RapierConfiguration>) {
-    commands.spawn(Camera2dBundle::default());
+fn spawn_from_tilemap(
+    commands: &mut Commands,
+    bitpack: Res<Bitpack>,
+    mut event_reader: Local<EventReader<TileMapSpawnEvent>>,
+    events: Res<Events<TileMapSpawnEvent>>,
+) {
+    for event in event_reader.iter(&events) {
+        match event {
+            TileMapSpawnEvent::Spawn(bundle) => tilebundle_spawn(*bundle, commands, &bitpack),
+            TileMapSpawnEvent::Despawn(a_tile) => tilebundle_despawn(*a_tile, commands),
+        };
+    }
+}
 
+fn tilebundle_spawn(bundle: TileBundle, commands: &mut Commands, bitpack: &Res<Bitpack>) {
+    match bundle.0 .0 as char {
+        'M' => tilebundle_spawn_mage(bundle, commands, bitpack),
+        '.' => tilebundle_spawn_stone(bundle, commands, bitpack),
+        'A' => tilebundle_spawn_sprite(bundle, commands, bitpack, 49, Color::DARK_GREEN),
+        'a' => tilebundle_spawn_sprite(bundle, commands, bitpack, 48, Color::DARK_GREEN),
+        _ => (),
+    }
+}
+
+fn tilebundle_despawn(a_tile: Entity, commands: &mut Commands) {
+    commands.despawn_recursive(a_tile);
+}
+
+fn tilebundle_spawn_sprite(
+    bundle: TileBundle,
+    commands: &mut Commands,
+    bitpack: &Res<Bitpack>,
+    index: u32,
+    color: Color,
+) {
+    commands
+        .spawn(SpriteSheetBundle {
+            texture_atlas: bitpack.atlas_handle.clone(),
+            sprite: TextureAtlasSprite { index, color },
+            ..Default::default()
+        })
+        .with_bundle(bundle);
+}
+
+fn tilebundle_spawn_mage(bundle: TileBundle, commands: &mut Commands, bitpack: &Res<Bitpack>) {
+    commands
+        .spawn(bundle)
+        .with_bundle(MageBundle::new())
+        .with_children(|child| {
+            child.spawn(level1::dress_mage(bitpack.atlas_handle.clone()));
+        });
+}
+
+fn tilebundle_spawn_stone(bundle: TileBundle, commands: &mut Commands, bitpack: &Res<Bitpack>) {
+    use ContactType::*;
+    use SoundType::*;
+
+    commands
+        .spawn(bundle)
+        .with_bundle((
+            Stone,
+            CanBeItemBasics {
+                pick_up: true,
+                drop: true,
+                throw: true,
+            },
+            Kinematics {
+                vel: Vec3::zero(),
+                drag: 0.97,
+            },
+            SoundOnContact::new(vec![(Ground, Clonk), (Wall, Bling)]),
+        ))
+        .with_children(|child| {
+            child.spawn(level1::dress_stone(bitpack.atlas_handle.clone()));
+        });
+}
+
+fn add_physics_example(commands: &mut Commands, mut _config: ResMut<RapierConfiguration>) {
     // config.gravity = Vector2::new(0.0, 0.0)
 
     let a_body1 = {
@@ -77,6 +162,21 @@ fn setup(commands: &mut Commands, mut config: ResMut<RapierConfiguration>) {
         let joint_builder = JointBuilderComponent::new(joint, a_body1, a_body2);
         commands.spawn((joint_builder,));
     }
+}
+
+fn add_tilemap(asset_server: Res<AssetServer>, commands: &mut Commands) {
+    asset_server.watch_for_changes().unwrap();
+
+    let tilemap_handle: Handle<TileMap> = asset_server.load("level3.tilemap");
+
+    let tilemap_bundle = (
+        Transform::from_translation(Vec3::new(-64.0, 64.0, 0.0)),
+        GlobalTransform::default(),
+        TileMapSpawner::new(tilemap_handle),
+        Children::default(),
+    );
+
+    commands.spawn(tilemap_bundle);
 }
 
 fn print_events(events: Res<EventQueue>, bodies: Res<RigidBodySet>) {

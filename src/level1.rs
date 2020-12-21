@@ -182,7 +182,10 @@ pub fn dress_mage(atlas: Handle<TextureAtlas>) -> impl DynamicBundle {
     }
 }
 
-pub fn kinematic_system(time: Res<Time>, mut query: Query<(Mut<Kinematics>, Mut<Transform>)>) {
+pub fn kinematic_system(
+    time: Res<Time>,
+    mut query: Query<(Mut<Kinematics>, Mut<Transform>)>,
+) {
     let dt = time.delta_seconds();
     for (mut kin, mut trans) in query.iter_mut() {
         let drag = kin.drag;
@@ -282,7 +285,10 @@ pub fn carry_system(
     }
 }
 
-pub fn throw_system(commands: &mut Commands, mut query: Query<(Entity, &Thrown, Mut<Kinematics>)>) {
+pub fn throw_system(
+    commands: &mut Commands,
+    mut query: Query<(Entity, &Thrown, Mut<Kinematics>)>,
+) {
     for (entity, thrown, mut kin) in query.iter_mut() {
         kin.vel += thrown.vel;
         commands.remove_one::<Thrown>(entity);
@@ -291,12 +297,11 @@ pub fn throw_system(commands: &mut Commands, mut query: Query<(Entity, &Thrown, 
 
 pub fn add_camera(commands: &mut Commands) {
     commands
-        .spawn(Camera2dBundle {
-            transform: Transform::from_scale(Vec3::splat(0.25)),
-            ..Default::default()
-        })
-        .current_entity()
-        .unwrap();
+        .spawn({
+            let mut bundle = Camera2dBundle::default();
+            bundle.transform.scale = Vec3::new(0.25, 0.25, 1.0);
+            bundle
+        });
 }
 
 trait RandomVec {

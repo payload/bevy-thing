@@ -16,19 +16,20 @@ use serde::Deserialize;
 
 use crate::bitpack::Bitpack;
 
-use crate::level1::*;
+use crate::level1;
+use level1::*;
 
 pub struct Level2Plugin;
 
 impl Plugin for Level2Plugin {
     fn build(&self, app: &mut AppBuilder) {
         app.add_startup_system(setup.system())
-            .add_startup_system(add_camera.system())
-            .add_system(kinematic_system.system())
-            .add_system(control_random_movement_system.system())
-            .add_system(control_random_item_basics_system.system())
-            .add_system(carry_system.system())
-            .add_system(throw_system.system())
+            .add_startup_system(level1::add_camera.system())
+            .add_system(level1::kinematic_system.system())
+            .add_system(level1::control_random_movement_system.system())
+            .add_system(level1::control_random_item_basics_system.system())
+            .add_system(level1::carry_system.system())
+            .add_system(level1::throw_system.system())
             .add_system(sync_tilemap_spawner_system.system())
             .add_system(EntityFactory::system.system())
             .add_asset::<TileMap>()
@@ -37,40 +38,49 @@ impl Plugin for Level2Plugin {
     }
 }
 
-struct EntityFactory;
+pub struct MageBundle;
 
-impl FromResources for EntityFactory {
-    fn from_resources(_resources: &Resources) -> Self {
-        Self
+impl MageBundle {
+    pub fn new() -> (
+        Mage,
+        CanItemBasics,
+        Kinematics,
+        MovementAbility,
+        ControlRandomMovement,
+        ControlRandomItemBasics,
+    ) {
+        (
+            Mage,
+            CanItemBasics {
+                pick_up: true,
+                drop: true,
+                throw: true,
+                picked_up: None,
+            },
+            Kinematics {
+                vel: Vec3::zero(),
+                drag: 0.97,
+            },
+            MovementAbility { top_speed: 20.0 },
+            ControlRandomMovement {
+                timer: Timer::from_seconds(1.0, true),
+            },
+            ControlRandomItemBasics {
+                timer: Timer::from_seconds(1.1, true),
+            },
+        )
     }
 }
+
+pub struct EntityFactory;
 
 impl EntityFactory {
     fn spawn_mage(bundle: TileBundle, commands: &mut Commands, bitpack: &Res<Bitpack>) {
         commands
             .spawn(bundle)
-            .with_bundle((
-                Mage,
-                CanItemBasics {
-                    pick_up: true,
-                    drop: true,
-                    throw: true,
-                    picked_up: None,
-                },
-                Kinematics {
-                    vel: Vec3::zero(),
-                    drag: 0.97,
-                },
-                MovementAbility { top_speed: 20.0 },
-                ControlRandomMovement {
-                    timer: Timer::from_seconds(1.0, true),
-                },
-                ControlRandomItemBasics {
-                    timer: Timer::from_seconds(1.1, true),
-                },
-            ))
+            .with_bundle(MageBundle::new())
             .with_children(|child| {
-                child.spawn(dress_mage(bitpack.atlas_handle.clone()));
+                child.spawn(level1::dress_mage(bitpack.atlas_handle.clone()));
             });
     }
 
@@ -94,7 +104,7 @@ impl EntityFactory {
                 SoundOnContact::new(vec![(Ground, Clonk), (Wall, Bling)]),
             ))
             .with_children(|child| {
-                child.spawn(dress_stone(bitpack.atlas_handle.clone()));
+                child.spawn(level1::dress_stone(bitpack.atlas_handle.clone()));
             });
     }
 
@@ -114,7 +124,7 @@ impl EntityFactory {
             .with_bundle(bundle);
     }
 
-    fn system(
+    pub fn system(
         commands: &mut Commands,
         bitpack: Res<Bitpack>,
         mut event_reader: Local<EventReader<TileMapSpawnEvent>>,
@@ -129,8 +139,6 @@ impl EntityFactory {
     }
 
     fn spawn(bundle: TileBundle, commands: &mut Commands, bitpack: &Res<Bitpack>) {
-        println!("MyHandler::spawn {}", bundle.2.translation);
-
         match bundle.0 .0 as char {
             'M' => Self::spawn_mage(bundle, commands, bitpack),
             '.' => Self::spawn_stone(bundle, commands, bitpack),
@@ -141,7 +149,6 @@ impl EntityFactory {
     }
 
     fn despawn(a_tile: Entity, commands: &mut Commands) {
-        println!("MyHandler::despawn");
         commands.despawn_recursive(a_tile);
     }
 }
@@ -168,7 +175,7 @@ pub struct TileMapSpawner {
 }
 
 impl TileMapSpawner {
-    fn new(handle: Handle<TileMap>) -> Self {
+    pub fn new(handle: Handle<TileMap>) -> Self {
         Self {
             handle,
             width: 16.0,
@@ -257,7 +264,7 @@ pub fn sync_tilemap_spawner_system(
 }
 
 #[derive(Eq, PartialEq, Hash, Debug, Deserialize, Default, Clone, Copy)]
-pub struct Tile(u8, u32, u32);
+pub struct Tile(pub u8, pub u32, pub u32);
 
 enum Event {
     Created,
