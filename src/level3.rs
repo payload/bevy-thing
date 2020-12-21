@@ -7,11 +7,23 @@
 */
 
 use bevy::{ecs::DynamicBundle, prelude::*};
-use bevy_rapier2d::{na::{Point2, Vector2}, physics::*, rapier::{dynamics::*, geometry::*}, render::*};
-use level1::{CanBeItemBasics, ContactType, ControlRandomMovement, Kinematics, MovementAbility, SoundOnContact, SoundType, Stone};
-use level2::{MageBundle, TileBundle, TileMap, TileMapLoader, TileMapSpawnEvent, TileMapSpawner};
+use bevy_rapier2d::{
+    na::{Point2, Vector2},
+    physics::*,
+    rapier::{dynamics::*, geometry::*},
+    render::*,
+};
+use level1::{
+    CanBeItemBasics, ContactType, ControlRandomMovement, Kinematics, MovementAbility,
+    SoundOnContact, SoundType, Stone,
+};
+use level2::{TileBundle, TileMap, TileMapLoader, TileMapSpawnEvent, TileMapSpawner};
 
-use crate::{bitpack::Bitpack, level1::{self, RandomVec}, level2};
+use crate::{
+    bitpack::Bitpack,
+    level1::{self, RandomVec},
+    level2,
+};
 
 pub struct Level3Plugin;
 
@@ -84,7 +96,7 @@ fn spawn_from_tilemap(
     for event in event_reader.iter(&events) {
         match event {
             TileMapSpawnEvent::Spawn(bundle) => tilebundle_spawn(*bundle, commands, &bitpack),
-            TileMapSpawnEvent::Despawn(a_tile) => tilebundle_despawn(*a_tile, commands),
+            TileMapSpawnEvent::Despawn(a_tile) => commands.despawn_recursive(*a_tile).end(),
         };
     }
 }
@@ -116,19 +128,29 @@ impl EntityWithBundle for Commands {
     }
 }
 
-fn tilebundle_spawn(bundle: TileBundle, commands: &mut Commands, bitpack: &Res<Bitpack>) {
+fn tilebundle_spawn(tile_bundle: TileBundle, commands: &mut Commands, bitpack: &Res<Bitpack>) {
     let atlas = bitpack.atlas_handle.clone();
 
-    match bundle.0 .0 as char {
+    match tile_bundle.0 .0 as char {
         'M' => commands
-            .spawn(bundle)
-            .with_bundle(MageBundle::new())
-            .entity_with_bundle(|e| mage_physics_bundle(e, bundle.2))
+            .spawn(tile_bundle)
+            .with_bundle(level2::mage_bundle())
+            .entity_with_bundle(|e| mage_physics_bundle(e, tile_bundle.2))
             .with_children(|it| it.spawn(level1::dress_mage(atlas)).end())
             .end(),
-        '.' => tilebundle_spawn_stone(bundle, commands, bitpack),
-        'A' => tilebundle_spawn_sprite(bundle, commands, bitpack, 49, Color::DARK_GREEN),
-        'a' => tilebundle_spawn_sprite(bundle, commands, bitpack, 48, Color::DARK_GREEN),
+        '.' => commands
+            .spawn(tile_bundle)
+            .with_bundle(stone_bundle())
+            .with_children(|it| it.spawn(level1::dress_stone(atlas)).end())
+            .end(),
+        'A' => commands
+            .spawn(sprite_bundle(atlas, 49, Color::DARK_GREEN))
+            .with_bundle(tile_bundle)
+            .end(),
+        'a' => commands
+            .spawn(sprite_bundle(atlas, 48, Color::DARK_GREEN))
+            .with_bundle(tile_bundle)
+            .end(),
         _ => (),
     }
 }
@@ -143,48 +165,35 @@ fn mage_physics_bundle(entity: Entity, transform: Transform) -> impl DynamicBund
     )
 }
 
-fn tilebundle_despawn(a_tile: Entity, commands: &mut Commands) {
-    commands.despawn_recursive(a_tile);
-}
-
-fn tilebundle_spawn_sprite(
-    bundle: TileBundle,
-    commands: &mut Commands,
-    bitpack: &Res<Bitpack>,
+fn sprite_bundle(
+    texture_atlas: Handle<TextureAtlas>,
     index: u32,
     color: Color,
-) {
-    commands
-        .spawn(SpriteSheetBundle {
-            texture_atlas: bitpack.atlas_handle.clone(),
-            sprite: TextureAtlasSprite { index, color },
-            ..Default::default()
-        })
-        .with_bundle(bundle);
+) -> impl DynamicBundle {
+    SpriteSheetBundle {
+        texture_atlas,
+        sprite: TextureAtlasSprite { index, color },
+        ..Default::default()
+    }
 }
 
-fn tilebundle_spawn_stone(bundle: TileBundle, commands: &mut Commands, bitpack: &Res<Bitpack>) {
+fn stone_bundle() -> impl DynamicBundle {
     use ContactType::*;
     use SoundType::*;
 
-    commands
-        .spawn(bundle)
-        .with_bundle((
-            Stone,
-            CanBeItemBasics {
-                pick_up: true,
-                drop: true,
-                throw: true,
-            },
-            Kinematics {
-                vel: Vec3::zero(),
-                drag: 0.97,
-            },
-            SoundOnContact::new(vec![(Ground, Clonk), (Wall, Bling)]),
-        ))
-        .with_children(|child| {
-            child.spawn(level1::dress_stone(bitpack.atlas_handle.clone()));
-        });
+    (
+        Stone,
+        CanBeItemBasics {
+            pick_up: true,
+            drop: true,
+            throw: true,
+        },
+        Kinematics {
+            vel: Vec3::zero(),
+            drag: 0.97,
+        },
+        SoundOnContact::new(vec![(Ground, Clonk), (Wall, Bling)]),
+    )
 }
 
 fn add_physics_example(commands: &mut Commands, mut config: ResMut<RapierConfiguration>) {

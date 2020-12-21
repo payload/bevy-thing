@@ -38,38 +38,34 @@ impl Plugin for Level2Plugin {
     }
 }
 
-pub struct MageBundle;
-
-impl MageBundle {
-    pub fn new() -> (
+pub fn mage_bundle() -> (
+    Mage,
+    CanItemBasics,
+    Kinematics,
+    MovementAbility,
+    ControlRandomMovement,
+    ControlRandomItemBasics,
+) {
+    (
         Mage,
-        CanItemBasics,
-        Kinematics,
-        MovementAbility,
-        ControlRandomMovement,
-        ControlRandomItemBasics,
-    ) {
-        (
-            Mage,
-            CanItemBasics {
-                pick_up: true,
-                drop: true,
-                throw: true,
-                picked_up: None,
-            },
-            Kinematics {
-                vel: Vec3::zero(),
-                drag: 0.97,
-            },
-            MovementAbility { top_speed: 20.0 },
-            ControlRandomMovement {
-                timer: Timer::from_seconds(1.0, true),
-            },
-            ControlRandomItemBasics {
-                timer: Timer::from_seconds(1.1, true),
-            },
-        )
-    }
+        CanItemBasics {
+            pick_up: true,
+            drop: true,
+            throw: true,
+            picked_up: None,
+        },
+        Kinematics {
+            vel: Vec3::zero(),
+            drag: 0.97,
+        },
+        MovementAbility { top_speed: 20.0 },
+        ControlRandomMovement {
+            timer: Timer::from_seconds(1.0, true),
+        },
+        ControlRandomItemBasics {
+            timer: Timer::from_seconds(1.1, true),
+        },
+    )
 }
 
 pub struct EntityFactory;
@@ -78,7 +74,7 @@ impl EntityFactory {
     fn spawn_mage(bundle: TileBundle, commands: &mut Commands, bitpack: &Res<Bitpack>) {
         commands
             .spawn(bundle)
-            .with_bundle(MageBundle::new())
+            .with_bundle(mage_bundle())
             .with_children(|child| {
                 child.spawn(level1::dress_mage(bitpack.atlas_handle.clone()));
             });
