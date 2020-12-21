@@ -4,6 +4,10 @@
     lets collide mages, stones and trees
     use physics to move and throw
     move towards stones
+
+    I learned that in order to use rapier physics I need to manually put
+    the entity int othe physics user_data to look it up again in the
+    event handler.
 */
 
 use bevy::{ecs::DynamicBundle, prelude::*};
@@ -33,36 +37,19 @@ impl Plugin for Level3Plugin {
             .add_startup_system(add_physics_example.system())
             .add_startup_system(add_tilemap.system())
             //
-            //.add_system(print_events.system())
             .add_system(spawn_from_tilemap.system())
             .add_system(control_random_movement_system.system())
             .add_system(level1::control_random_item_basics_system.system())
             .add_system(carry_system.system())
             .add_system(throw_system.system())
-            // TODO tilemap plugin
+            // TODO this could be a tilemap plugin
             .add_system(level2::sync_tilemap_spawner_system.system())
             .add_asset::<TileMap>()
             .init_asset_loader::<TileMapLoader>()
             .add_event::<TileMapSpawnEvent>()
-            //
-            //.add_system(level1::kinematic_system.system())
             /* end */;
     }
 }
-
-/*
-    spawn plain entity
-
-    body_build.user_data(player_entity.to_bits() as u128)
-    collider_build
-    insert entity (body, collider)
-
-    insert entity render_stuff
-
-    proximity event handler
-    b1 = bodies.get(handle1).unwrap()
-    Entity::from_bits(b1.user_data as u64)
-*/
 
 trait IntoVector2 {
     fn into_vector2(self) -> Vector2<f32>;
@@ -74,7 +61,6 @@ impl IntoVector2 for Vec3 {
     }
 }
 
-// this is almost the same as in level1, but setting linear velocity is different and its system inputs
 fn throw_system(
     commands: &mut Commands,
     mut bodies: ResMut<RigidBodySet>,
@@ -109,7 +95,6 @@ fn carry_system(
     }
 }
 
-// this is almost the same as in level1, but setting linear velocity is different and its system inputs
 pub fn control_random_movement_system(
     time: Res<Time>,
     mut bodies: ResMut<RigidBodySet>,
@@ -323,20 +308,4 @@ fn add_tilemap(asset_server: Res<AssetServer>, commands: &mut Commands) {
     );
 
     commands.spawn(tilemap_bundle);
-}
-
-fn _print_events(events: Res<EventQueue>, bodies: Res<RigidBodySet>) {
-    while let Ok(event) = events.proximity_events.pop() {
-        let body1 = bodies.get(event.collider1).unwrap();
-        let body2 = bodies.get(event.collider2).unwrap();
-
-        let a_collider1 = Entity::from_bits(body1.user_data as u64);
-        let a_collider2 = Entity::from_bits(body2.user_data as u64);
-
-        println!("{:?}\n\t{:?} {:?}", event, a_collider1, a_collider2);
-    }
-
-    while let Ok(contact_event) = events.contact_events.pop() {
-        println!("{:?}", contact_event);
-    }
 }
