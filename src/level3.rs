@@ -6,17 +6,12 @@
     use rapier
 */
 
-use bevy::prelude::*;
-use bevy_rapier2d::{
-    na::Point2,
-    physics::*,
-    rapier::{dynamics::*, geometry::*},
-    render::*,
-};
-use level1::{CanBeItemBasics, ContactType, Kinematics, SoundOnContact, SoundType, Stone};
+use bevy::{ecs::DynamicBundle, prelude::*};
+use bevy_rapier2d::{na::{Point2, Vector2}, physics::*, rapier::{dynamics::*, geometry::*}, render::*};
+use level1::{CanBeItemBasics, ContactType, ControlRandomMovement, Kinematics, MovementAbility, SoundOnContact, SoundType, Stone};
 use level2::{MageBundle, TileBundle, TileMap, TileMapLoader, TileMapSpawnEvent, TileMapSpawner};
 
-use crate::{bitpack::Bitpack, level1, level2};
+use crate::{bitpack::Bitpack, level1::{self, RandomVec}, level2};
 
 pub struct Level3Plugin;
 
@@ -24,7 +19,6 @@ impl Plugin for Level3Plugin {
     fn build(&self, app: &mut AppBuilder) {
         app /**/
             .add_plugin(RapierPhysicsPlugin)
-            .add_plugin(RapierRenderPlugin)
             //
             .add_startup_system(level1::add_camera.system())
             .add_startup_system(add_physics_example.system())
@@ -32,14 +26,14 @@ impl Plugin for Level3Plugin {
             //
             .add_system(print_events.system())
             .add_system(spawn_from_tilemap.system())
+            .add_system(control_random_movement_system.system())
             // TODO tilemap plugin
             .add_system(level2::sync_tilemap_spawner_system.system())
             .add_asset::<TileMap>()
             .init_asset_loader::<TileMapLoader>()
             .add_event::<TileMapSpawnEvent>()
             //
-            .add_system(level1::control_random_movement_system.system())
-            .add_system(level1::kinematic_system.system())
+            //.add_system(level1::kinematic_system.system())
             /* end */;
     }
 }
@@ -58,6 +52,29 @@ impl Plugin for Level3Plugin {
     Entity::from_bits(b1.user_data as u64)
 */
 
+pub fn control_random_movement_system(
+    time: Res<Time>,
+    mut bodies: ResMut<RigidBodySet>,
+    mut query: Query<(
+        Mut<ControlRandomMovement>,
+        Mut<RigidBodyHandleComponent>,
+        &MovementAbility,
+    )>,
+) {
+    let dt = time.delta_seconds();
+    let mut rng = rand::thread_rng();
+    for (mut control, body_handle, movement) in query.iter_mut() {
+        if control.timer.tick(dt).finished() {
+            let top_speed = movement.top_speed;
+            let rand_vec = rng.random_vec2d() * top_speed * 0.8;
+
+            if let Some(body) = bodies.get_mut(body_handle.handle()) {
+                body.set_linvel(Vector2::new(rand_vec.x, rand_vec.y), true);
+            }
+        }
+    }
+}
+
 fn spawn_from_tilemap(
     commands: &mut Commands,
     bitpack: Res<Bitpack>,
@@ -72,14 +89,58 @@ fn spawn_from_tilemap(
     }
 }
 
+trait End {
+    fn end(&self) {}
+}
+
+impl End for Commands {}
+impl<'a> End for ChildBuilder<'a> {}
+
+trait EntityWithBundle {
+    fn entity_with_bundle<T, F>(&mut self, func: F) -> &mut Self
+    where
+        F: FnMut(Entity) -> T,
+        T: DynamicBundle + Send + Sync + 'static;
+}
+
+impl EntityWithBundle for Commands {
+    fn entity_with_bundle<T, F>(&mut self, func: F) -> &mut Self
+    where
+        F: FnMut(Entity) -> T,
+        T: DynamicBundle + Send + Sync + 'static,
+    {
+        if let Some(bundle) = self.current_entity().map(func) {
+            self.with_bundle(bundle);
+        }
+        self
+    }
+}
+
 fn tilebundle_spawn(bundle: TileBundle, commands: &mut Commands, bitpack: &Res<Bitpack>) {
+    let atlas = bitpack.atlas_handle.clone();
+
     match bundle.0 .0 as char {
-        'M' => tilebundle_spawn_mage(bundle, commands, bitpack),
+        'M' => commands
+            .spawn(bundle)
+            .with_bundle(MageBundle::new())
+            .entity_with_bundle(|e| mage_physics_bundle(e, bundle.2))
+            .with_children(|it| it.spawn(level1::dress_mage(atlas)).end())
+            .end(),
         '.' => tilebundle_spawn_stone(bundle, commands, bitpack),
         'A' => tilebundle_spawn_sprite(bundle, commands, bitpack, 49, Color::DARK_GREEN),
         'a' => tilebundle_spawn_sprite(bundle, commands, bitpack, 48, Color::DARK_GREEN),
         _ => (),
     }
+}
+
+fn mage_physics_bundle(entity: Entity, transform: Transform) -> impl DynamicBundle {
+    (
+        RigidBodyBuilder::new_dynamic()
+            .translation(transform.translation.x, transform.translation.y)
+            .user_data(entity.to_bits() as u128),
+        ColliderBuilder::ball(3.0),
+        RapierRenderColor(1.0, 0.0, 0.0),
+    )
 }
 
 fn tilebundle_despawn(a_tile: Entity, commands: &mut Commands) {
@@ -100,15 +161,6 @@ fn tilebundle_spawn_sprite(
             ..Default::default()
         })
         .with_bundle(bundle);
-}
-
-fn tilebundle_spawn_mage(bundle: TileBundle, commands: &mut Commands, bitpack: &Res<Bitpack>) {
-    commands
-        .spawn(bundle)
-        .with_bundle(MageBundle::new())
-        .with_children(|child| {
-            child.spawn(level1::dress_mage(bitpack.atlas_handle.clone()));
-        });
 }
 
 fn tilebundle_spawn_stone(bundle: TileBundle, commands: &mut Commands, bitpack: &Res<Bitpack>) {
@@ -135,8 +187,8 @@ fn tilebundle_spawn_stone(bundle: TileBundle, commands: &mut Commands, bitpack: 
         });
 }
 
-fn add_physics_example(commands: &mut Commands, mut _config: ResMut<RapierConfiguration>) {
-    // config.gravity = Vector2::new(0.0, 0.0)
+fn add_physics_example(commands: &mut Commands, mut config: ResMut<RapierConfiguration>) {
+    config.gravity = Vector2::new(0.0, 0.0);
 
     let a_body1 = {
         let entity = commands.spawn(()).current_entity().unwrap();

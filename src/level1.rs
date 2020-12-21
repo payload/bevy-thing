@@ -304,7 +304,7 @@ pub fn add_camera(commands: &mut Commands) {
         });
 }
 
-trait RandomVec {
+pub trait RandomVec {
     fn random_vec2d(&mut self) -> Vec3;
 }
 
