@@ -36,7 +36,7 @@ impl Plugin for Level3Plugin {
             .add_startup_system(add_physics_example.system())
             .add_startup_system(add_tilemap.system())
             //
-            .add_system(print_events.system())
+            //.add_system(print_events.system())
             .add_system(spawn_from_tilemap.system())
             .add_system(control_random_movement_system.system())
             // TODO tilemap plugin
@@ -141,15 +141,18 @@ fn tilebundle_spawn(tile_bundle: TileBundle, commands: &mut Commands, bitpack: &
         '.' => commands
             .spawn(tile_bundle)
             .with_bundle(stone_bundle())
+            //.entity_with_bundle(|e| stone_physics_bundle(e, tile_bundle.2))
             .with_children(|it| it.spawn(level1::dress_stone(atlas)).end())
             .end(),
         'A' => commands
             .spawn(sprite_bundle(atlas, 49, Color::DARK_GREEN))
             .with_bundle(tile_bundle)
+            .entity_with_bundle(|e| static_tile_physics_bundle(e, tile_bundle.2))
             .end(),
         'a' => commands
             .spawn(sprite_bundle(atlas, 48, Color::DARK_GREEN))
             .with_bundle(tile_bundle)
+            .entity_with_bundle(|e| static_tile_physics_bundle(e, tile_bundle.2))
             .end(),
         _ => (),
     }
@@ -159,11 +162,33 @@ fn mage_physics_bundle(entity: Entity, transform: Transform) -> impl DynamicBund
     (
         RigidBodyBuilder::new_dynamic()
             .translation(transform.translation.x, transform.translation.y)
+            .lock_rotations()
+            .user_data(entity.to_bits() as u128),
+        ColliderBuilder::ball(4.0),
+        RapierRenderColor(1.0, 0.0, 0.0),
+    )
+}
+
+fn static_tile_physics_bundle(entity: Entity, transform: Transform) -> impl DynamicBundle {
+    (
+        RigidBodyBuilder::new_static()
+            .translation(transform.translation.x, transform.translation.y)
+            .user_data(entity.to_bits() as u128),
+        ColliderBuilder::cuboid(8.0, 8.0),
+    )
+}
+
+/*
+fn stone_physics_bundle(entity: Entity, transform: Transform) -> impl DynamicBundle {
+    (
+        RigidBodyBuilder::new_dynamic()
+            .translation(transform.translation.x, transform.translation.y)
             .user_data(entity.to_bits() as u128),
         ColliderBuilder::ball(3.0),
         RapierRenderColor(1.0, 0.0, 0.0),
     )
 }
+*/
 
 fn sprite_bundle(
     texture_atlas: Handle<TextureAtlas>,
@@ -240,7 +265,7 @@ fn add_tilemap(asset_server: Res<AssetServer>, commands: &mut Commands) {
     commands.spawn(tilemap_bundle);
 }
 
-fn print_events(events: Res<EventQueue>, bodies: Res<RigidBodySet>) {
+fn _print_events(events: Res<EventQueue>, bodies: Res<RigidBodySet>) {
     while let Ok(event) = events.proximity_events.pop() {
         let body1 = bodies.get(event.collider1).unwrap();
         let body2 = bodies.get(event.collider2).unwrap();
