@@ -1,9 +1,9 @@
 /*
-    mages, trees, stones are nice but lets get proximity to the stones
-    before picking them up.
+    mages, trees, stones are nice
 
-    random movement on mages, but only pick up when near
-    use rapier
+    lets collide mages, stones and trees
+    use physics to move and throw
+    move towards stones
 */
 
 use bevy::{ecs::DynamicBundle, prelude::*};
