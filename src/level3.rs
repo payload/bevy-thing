@@ -12,12 +12,15 @@
 
 use bevy::{ecs::DynamicBundle, prelude::*};
 use bevy_rapier2d::{
-    na::{Point2, Vector2, Isometry2},
+    na::{Isometry2, Point2, Vector2},
     physics::*,
     rapier::{dynamics::*, geometry::*},
     render::*,
 };
-use level1::{CanBeItemBasics, CanItemBasics, Carried, ContactType, ControlRandomMovement, Kinematics, MovementAbility, SoundOnContact, SoundType, Stone, Thrown};
+use level1::{
+    CanBeItemBasics, CanItemBasics, Carried, ContactType, ControlRandomMovement, Kinematics,
+    MovementAbility, SoundOnContact, SoundType, Stone, Thrown,
+};
 use level2::{TileBundle, TileMap, TileMapLoader, TileMapSpawnEvent, TileMapSpawner};
 
 use crate::{
@@ -68,7 +71,7 @@ fn throw_system(
 ) {
     for (entity, thrown, body_handle) in query.iter_mut() {
         if let Some(body) = bodies.get_mut(body_handle.handle()) {
-            body.apply_impulse( (thrown.vel * 50.0).into_vector2(), true);
+            body.apply_impulse((thrown.vel * 50.0).into_vector2(), true);
             body.set_angvel(0.0, false);
         }
         commands.remove_one::<Thrown>(entity);
