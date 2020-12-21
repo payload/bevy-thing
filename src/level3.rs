@@ -13,7 +13,7 @@ use bevy_rapier2d::{
     rapier::{dynamics::*, geometry::*},
     render::*,
 };
-use level1::{CanBeItemBasics, Carried, ContactType, ControlRandomMovement, Kinematics, MovementAbility, SoundOnContact, SoundType, Stone, Thrown};
+use level1::{CanBeItemBasics, CanItemBasics, Carried, ContactType, ControlRandomMovement, Kinematics, MovementAbility, SoundOnContact, SoundType, Stone, Thrown};
 use level2::{TileBundle, TileMap, TileMapLoader, TileMapSpawnEvent, TileMapSpawner};
 
 use crate::{
@@ -116,18 +116,33 @@ pub fn control_random_movement_system(
     mut query: Query<(
         Mut<ControlRandomMovement>,
         Mut<RigidBodyHandleComponent>,
+        &CanItemBasics,
         &MovementAbility,
     )>,
+    items: Query<&Transform, With<CanBeItemBasics>>,
 ) {
+    let mut iter = items.iter();
+    let mut mid = iter.next().map(|it| it.translation).unwrap_or_default();
+    for trans in items.iter() {
+        mid = 0.5 * (mid + trans.translation);
+    }
+
     let dt = time.delta_seconds();
     let mut rng = rand::thread_rng();
-    for (mut control, body_handle, movement) in query.iter_mut() {
+    for (mut control, body_handle, can, movement) in query.iter_mut() {
         if control.timer.tick(dt).finished() {
-            let top_speed = movement.top_speed;
-            let rand_vec = rng.random_vec2d() * top_speed * 0.8;
-
             if let Some(body) = bodies.get_mut(body_handle.handle()) {
-                body.set_linvel(Vector2::new(rand_vec.x, rand_vec.y), true);
+                let top_speed = movement.top_speed;
+
+                if can.picked_up.is_some() {
+                    let vel = rng.random_vec2d() * top_speed * 0.8;
+                    body.set_linvel(vel.into_vector2(), true);
+                } else {
+                    let trans = body.position().translation;
+                    let dir = (mid - Vec3::new(trans.x, trans.y, 0.0)).normalize();
+                    let vel = dir.lerp(rng.random_vec2d(), 0.4) * top_speed * 0.8;
+                    body.set_linvel(vel.into_vector2(), true);
+                }
             }
         }
     }
