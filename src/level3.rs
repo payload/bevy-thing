@@ -8,15 +8,12 @@
 
 use bevy::{ecs::DynamicBundle, prelude::*};
 use bevy_rapier2d::{
-    na::{Point2, Vector2},
+    na::{Point2, Vector2, Isometry2},
     physics::*,
     rapier::{dynamics::*, geometry::*},
     render::*,
 };
-use level1::{
-    CanBeItemBasics, ContactType, ControlRandomMovement, Kinematics, MovementAbility,
-    SoundOnContact, SoundType, Stone,
-};
+use level1::{CanBeItemBasics, Carried, ContactType, ControlRandomMovement, Kinematics, MovementAbility, SoundOnContact, SoundType, Stone, Thrown};
 use level2::{TileBundle, TileMap, TileMapLoader, TileMapSpawnEvent, TileMapSpawner};
 
 use crate::{
@@ -39,6 +36,9 @@ impl Plugin for Level3Plugin {
             //.add_system(print_events.system())
             .add_system(spawn_from_tilemap.system())
             .add_system(control_random_movement_system.system())
+            .add_system(level1::control_random_item_basics_system.system())
+            .add_system(carry_system.system())
+            .add_system(throw_system.system())
             // TODO tilemap plugin
             .add_system(level2::sync_tilemap_spawner_system.system())
             .add_asset::<TileMap>()
@@ -64,6 +64,52 @@ impl Plugin for Level3Plugin {
     Entity::from_bits(b1.user_data as u64)
 */
 
+trait IntoVector2 {
+    fn into_vector2(self) -> Vector2<f32>;
+}
+
+impl IntoVector2 for Vec3 {
+    fn into_vector2(self) -> Vector2<f32> {
+        Vector2::new(self.x, self.y)
+    }
+}
+
+// this is almost the same as in level1, but setting linear velocity is different and its system inputs
+fn throw_system(
+    commands: &mut Commands,
+    mut bodies: ResMut<RigidBodySet>,
+    mut query: Query<(Entity, &Thrown, &RigidBodyHandleComponent)>,
+) {
+    for (entity, thrown, body_handle) in query.iter_mut() {
+        if let Some(body) = bodies.get_mut(body_handle.handle()) {
+            body.apply_impulse( (thrown.vel * 50.0).into_vector2(), true);
+            body.set_angvel(0.0, false);
+        }
+        commands.remove_one::<Thrown>(entity);
+    }
+}
+
+fn carry_system(
+    commands: &mut Commands,
+    mut bodies: ResMut<RigidBodySet>,
+    mut query: Query<(Entity, &Carried, &RigidBodyHandleComponent)>,
+    transform: Query<&Transform, Without<Carried>>,
+) {
+    for (item, carried, handle) in query.iter_mut() {
+        if let Ok(owner_trans) = transform.get(carried.owner) {
+            if let Some(body) = bodies.get_mut(handle.handle()) {
+                let pos = owner_trans.translation + carried.offset.translation;
+                body.set_position(Isometry2::new(pos.into_vector2(), 0.0), false);
+                body.set_angvel(0.0, false);
+                body.set_linvel(Vector2::new(0.0, 0.0), false);
+            }
+        } else {
+            commands.remove_one::<Carried>(item);
+        }
+    }
+}
+
+// this is almost the same as in level1, but setting linear velocity is different and its system inputs
 pub fn control_random_movement_system(
     time: Res<Time>,
     mut bodies: ResMut<RigidBodySet>,
@@ -141,7 +187,7 @@ fn tilebundle_spawn(tile_bundle: TileBundle, commands: &mut Commands, bitpack: &
         '.' => commands
             .spawn(tile_bundle)
             .with_bundle(stone_bundle())
-            //.entity_with_bundle(|e| stone_physics_bundle(e, tile_bundle.2))
+            .entity_with_bundle(|e| stone_physics_bundle(e, tile_bundle.2))
             .with_children(|it| it.spawn(level1::dress_stone(atlas)).end())
             .end(),
         'A' => commands
@@ -164,7 +210,7 @@ fn mage_physics_bundle(entity: Entity, transform: Transform) -> impl DynamicBund
             .translation(transform.translation.x, transform.translation.y)
             .lock_rotations()
             .user_data(entity.to_bits() as u128),
-        ColliderBuilder::ball(4.0),
+        ColliderBuilder::ball(4.0).collision_groups(InteractionGroups::new(0x0002, 0x0002)),
         RapierRenderColor(1.0, 0.0, 0.0),
     )
 }
@@ -178,17 +224,16 @@ fn static_tile_physics_bundle(entity: Entity, transform: Transform) -> impl Dyna
     )
 }
 
-/*
 fn stone_physics_bundle(entity: Entity, transform: Transform) -> impl DynamicBundle {
     (
         RigidBodyBuilder::new_dynamic()
             .translation(transform.translation.x, transform.translation.y)
+            .linear_damping(0.97)
             .user_data(entity.to_bits() as u128),
-        ColliderBuilder::ball(3.0),
+        ColliderBuilder::ball(3.0).collision_groups(InteractionGroups::new(0x0001, 0x0001)),
         RapierRenderColor(1.0, 0.0, 0.0),
     )
 }
-*/
 
 fn sprite_bundle(
     texture_atlas: Handle<TextureAtlas>,
