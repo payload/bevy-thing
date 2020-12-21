@@ -14,12 +14,7 @@ use bevy_rapier2d::{
     render::*,
 };
 
-/*
-use bevy_rapier2d::{na::{Point2, Vector2}, physics::{JointBuilderComponent, RapierPhysicsPlugin, RapierConfiguration}, rapier::{
-        dynamics::{BallJoint, RigidBodyBuilder},
-        geometry::ColliderBuilder,
-    }, render::{RapierRenderPlugin, RapierRenderColor}};
-*/
+use crate::level2::*;
 
 pub struct Level3Plugin;
 
@@ -30,46 +25,69 @@ impl Plugin for Level3Plugin {
             .add_plugin(RapierRenderPlugin)
             .add_startup_system(setup.system())
             .add_system(print_events.system())
+            //
+            .add_system(sync_tilemap_spawner_system.system())
+            .add_asset::<TileMap>()
+            .init_asset_loader::<TileMapLoader>()
+            .add_event::<TileMapSpawnEvent>()
             /* end */;
     }
 }
 
-trait With<T> {
-    fn with<F: FnOnce(&mut T) -> ()>(self, func: F) -> T;
-}
+/*
+    spawn plain entity
 
-impl<T> With<T> for T {
-    fn with<F: FnOnce(&mut T) -> ()>(mut self, func: F) -> T {
-        func(&mut self);
-        self
-    }
-}
+    body_build.user_data(player_entity.to_bits() as u128)
+    collider_build
+    insert entity (body, collider)
+
+    insert entity render_stuff
+
+    proximity event handler
+    b1 = bodies.get(handle1).unwrap()
+    Entity::from_bits(b1.user_data as u64)
+*/
 
 fn setup(commands: &mut Commands, mut config: ResMut<RapierConfiguration>) {
     commands.spawn(Camera2dBundle::default());
 
-    config.gravity = Vector2::new(0.0, 0.0);
+    // config.gravity = Vector2::new(0.0, 0.0)
 
-    let body1 = RigidBodyBuilder::new_static();
-    let collider1 = ColliderBuilder::cuboid(100.0, 10.0).sensor(true);
+    let a_body1 = {
+        let entity = commands.spawn(()).current_entity().unwrap();
 
-    let body2 = RigidBodyBuilder::new_dynamic().translation(0.0, 50.0);
-    let collider2 = ColliderBuilder::ball(10.0);
+        let body = RigidBodyBuilder::new_static().user_data(entity.to_bits() as u128);
+        let collider = ColliderBuilder::cuboid(100.0, 10.0).sensor(true);
+        commands.insert(entity, (body, collider));
+        entity
+    };
 
-    let a_body1 = commands.spawn((body1, collider1)).current_entity().unwrap();
-    let a_body2 = commands
-        .spawn((body2, collider2, RapierRenderColor(1.0, 0.0, 0.0)))
-        .current_entity()
-        .unwrap();
+    let a_body2 = {
+        let entity = commands.spawn(()).current_entity().unwrap();
 
-    let joint_params = BallJoint::new(Point2::origin(), Point2::new(5.0, -50.0));
-    let joint = JointBuilderComponent::new(joint_params, a_body1, a_body2);
-    commands.spawn((joint,));
+        let body = RigidBodyBuilder::new_dynamic().user_data(entity.to_bits() as u128);
+        let collider = ColliderBuilder::ball(10.0);
+        let color = RapierRenderColor(1.0, 0.0, 0.0);
+        commands.insert(entity, (body, collider, color));
+        entity
+    };
+
+    {
+        let joint = BallJoint::new(Point2::origin(), Point2::new(5.0, -50.0));
+        let joint_builder = JointBuilderComponent::new(joint, a_body1, a_body2);
+        commands.spawn((joint_builder,));
+    }
 }
 
-fn print_events(events: Res<bevy_rapier2d::physics::EventQueue>) {
-    while let Ok(proximity_event) = events.proximity_events.pop() {
-        println!("{:?}", proximity_event);
+fn print_events(events: Res<EventQueue>, bodies: Res<RigidBodySet>) {
+    while let Ok(event) = events.proximity_events.pop() {
+        let body1 = bodies.get(event.collider1).unwrap();
+        let body2 = bodies.get(event.collider2).unwrap();
+
+        let a_collider1 = Entity::from_bits(body1.user_data as u64);
+        let a_collider2 = Entity::from_bits(body2.user_data as u64);
+
+        println!("{:?}\n\t{:?} {:?}", event, a_collider1, a_collider2);
     }
 
     while let Ok(contact_event) = events.contact_events.pop() {

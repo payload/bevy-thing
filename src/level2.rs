@@ -161,7 +161,7 @@ pub fn setup(commands: &mut Commands, asset_server: Res<AssetServer>) {
     commands.spawn(level2_tilemap);
 }
 
-struct TileMapSpawner {
+pub struct TileMapSpawner {
     handle: Handle<TileMap>,
     width: f32,
     height: f32,
@@ -194,14 +194,14 @@ impl TileMapSpawner {
     }
 }
 
-enum TileMapSpawnEvent {
+pub enum TileMapSpawnEvent {
     Spawn(TileBundle),
     Despawn(Entity),
 }
 
-type TileBundle = (Tile, Parent, Transform, GlobalTransform);
+pub type TileBundle = (Tile, Parent, Transform, GlobalTransform);
 
-fn sync_tilemap_spawner_system(
+pub fn sync_tilemap_spawner_system(
     // assets
     tilemaps: Res<Assets<TileMap>>,
     // events
@@ -257,7 +257,7 @@ fn sync_tilemap_spawner_system(
 }
 
 #[derive(Eq, PartialEq, Hash, Debug, Deserialize, Default, Clone, Copy)]
-struct Tile(u8, u32, u32);
+pub struct Tile(u8, u32, u32);
 
 enum Event {
     Created,
@@ -279,7 +279,7 @@ impl From<&AssetEvent<TileMap>> for MyAssetEvent {
 
 #[derive(Debug, Deserialize, TypeUuid, Default)]
 #[uuid = "39cadc56-aa9c-4543-8640-a018b71b5051"]
-struct TileMap {
+pub struct TileMap {
     map: Vec<Tile>,
 }
 
