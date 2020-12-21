@@ -8,14 +8,18 @@
 
 use bevy::prelude::*;
 use bevy_rapier2d::{
-    na::Point2,
-    physics::{JointBuilderComponent, RapierPhysicsPlugin},
-    rapier::{
+    na::*,
+    physics::*,
+    rapier::{dynamics::*, geometry::*},
+    render::*,
+};
+
+/*
+use bevy_rapier2d::{na::{Point2, Vector2}, physics::{JointBuilderComponent, RapierPhysicsPlugin, RapierConfiguration}, rapier::{
         dynamics::{BallJoint, RigidBodyBuilder},
         geometry::ColliderBuilder,
-    },
-    render::RapierRenderPlugin,
-};
+    }, render::{RapierRenderPlugin, RapierRenderColor}};
+*/
 
 pub struct Level3Plugin;
 
@@ -41,17 +45,22 @@ impl<T> With<T> for T {
     }
 }
 
-fn setup(commands: &mut Commands) {
+fn setup(commands: &mut Commands, mut config: ResMut<RapierConfiguration>) {
     commands.spawn(Camera2dBundle::default());
 
+    config.gravity = Vector2::new(0.0, 0.0);
+
     let body1 = RigidBodyBuilder::new_static();
-    let collider1 = ColliderBuilder::cuboid(100.0, 10.0);
+    let collider1 = ColliderBuilder::cuboid(100.0, 10.0).sensor(true);
 
     let body2 = RigidBodyBuilder::new_dynamic().translation(0.0, 50.0);
     let collider2 = ColliderBuilder::ball(10.0);
 
     let a_body1 = commands.spawn((body1, collider1)).current_entity().unwrap();
-    let a_body2 = commands.spawn((body2, collider2)).current_entity().unwrap();
+    let a_body2 = commands
+        .spawn((body2, collider2, RapierRenderColor(1.0, 0.0, 0.0)))
+        .current_entity()
+        .unwrap();
 
     let joint_params = BallJoint::new(Point2::origin(), Point2::new(5.0, -50.0));
     let joint = JointBuilderComponent::new(joint_params, a_body1, a_body2);
