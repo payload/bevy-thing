@@ -1,4 +1,2 @@
-/target
-/stable
-/nightly
+/target*
 /.vscode

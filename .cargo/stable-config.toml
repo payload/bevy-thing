@@ -1,1 +1,1 @@
-build.target-dir = "stable"
+build.target-dir = "target-stable"

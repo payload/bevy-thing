@@ -1,5 +1,5 @@
 # Rename this file to `config.toml` to enable "fast build" configuration. Please read the notes below.
-build.target-dir = "nightly"
+build.target-dir = "target-nightly"
 
 # NOTE: For maximum performance, build using a nightly compiler
 # If you are using rust stable, remove the "-Zshare-generics=y" below.
