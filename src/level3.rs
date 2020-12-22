@@ -12,7 +12,7 @@
 
 use bevy::{ecs::DynamicBundle, prelude::*};
 use bevy_rapier2d::{
-    na::{Isometry2, Point2, Vector2},
+    na::{Isometry2, Vector2},
     physics::*,
     rapier::{dynamics::*, geometry::*},
     render::*,
@@ -36,8 +36,8 @@ impl Plugin for Level3Plugin {
         app /**/
             .add_plugin(RapierPhysicsPlugin)
             //
+            .add_startup_system(setup_physics.system())
             .add_startup_system(level1::add_camera.system())
-            .add_startup_system(add_physics_example.system())
             .add_startup_system(add_tilemap.system())
             //
             .add_system(spawn_from_tilemap.system())
@@ -52,6 +52,10 @@ impl Plugin for Level3Plugin {
             .add_event::<TileMapSpawnEvent>()
             /* end */;
     }
+}
+
+fn setup_physics(mut config: ResMut<RapierConfiguration>) {
+    config.gravity = Vector2::new(0.0, 0.0);
 }
 
 trait IntoVector2 {
@@ -272,35 +276,6 @@ fn stone_bundle() -> impl DynamicBundle {
         },
         SoundOnContact::new(vec![(Ground, Clonk), (Wall, Bling)]),
     )
-}
-
-fn add_physics_example(commands: &mut Commands, mut config: ResMut<RapierConfiguration>) {
-    config.gravity = Vector2::new(0.0, 0.0);
-
-    let a_body1 = {
-        let entity = commands.spawn(()).current_entity().unwrap();
-
-        let body = RigidBodyBuilder::new_static().user_data(entity.to_bits() as u128);
-        let collider = ColliderBuilder::cuboid(100.0, 10.0).sensor(true);
-        commands.insert(entity, (body, collider));
-        entity
-    };
-
-    let a_body2 = {
-        let entity = commands.spawn(()).current_entity().unwrap();
-
-        let body = RigidBodyBuilder::new_dynamic().user_data(entity.to_bits() as u128);
-        let collider = ColliderBuilder::ball(10.0);
-        let color = RapierRenderColor(1.0, 0.0, 0.0);
-        commands.insert(entity, (body, collider, color));
-        entity
-    };
-
-    {
-        let joint = BallJoint::new(Point2::origin(), Point2::new(5.0, -50.0));
-        let joint_builder = JointBuilderComponent::new(joint, a_body1, a_body2);
-        commands.spawn((joint_builder,));
-    }
 }
 
 fn add_tilemap(asset_server: Res<AssetServer>, commands: &mut Commands) {
