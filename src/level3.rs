@@ -144,30 +144,32 @@ fn spawn_from_tilemap(
 ) {
     for event in event_reader.iter(&events) {
         match event {
-            TileMapSpawnEvent::Spawn(bundle) => tilebundle_spawn(*bundle, commands, &bitpack),
-            TileMapSpawnEvent::Despawn(a_tile) => commands.despawn_recursive(*a_tile).end(),
+            TileMapSpawnEvent::Spawn(bundle) => commands.tile_spawn(*bundle, &bitpack),
+            TileMapSpawnEvent::Despawn(a_tile) => commands.despawn_recursive(*a_tile),
         };
     }
 }
 
-trait End {
-    fn end(&self) {}
-}
+trait CommandsExt {
+    fn with_child(&mut self, f: impl FnOnce(&mut Commands) -> &mut Commands) -> &mut Self;
 
-impl End for Commands {}
-impl<'a> End for ChildBuilder<'a> {}
-
-trait EntityWithBundle {
-    fn entity_with_bundle<T, F>(&mut self, func: F) -> &mut Self
+    fn entity_with_bundle<T>(&mut self, func: impl FnMut(Entity) -> T) -> &mut Self
     where
-        F: FnMut(Entity) -> T,
         T: DynamicBundle + Send + Sync + 'static;
 }
 
-impl EntityWithBundle for Commands {
-    fn entity_with_bundle<T, F>(&mut self, func: F) -> &mut Self
+impl CommandsExt for Commands {
+    fn with_child(&mut self, f: impl FnOnce(&mut Commands) -> &mut Commands) -> &mut Self {
+        let parent = self.current_entity().expect("Cannot add children because the 'current entity' is not set. You should spawn an entity first.");
+        let child = self.spawn(()).current_entity().unwrap();
+        f(self);
+        self.set_current_entity(parent);
+        self.push_children(parent, &[child]);
+        self
+    }
+
+    fn entity_with_bundle<T>(&mut self, func: impl FnMut(Entity) -> T) -> &mut Self
     where
-        F: FnMut(Entity) -> T,
         T: DynamicBundle + Send + Sync + 'static,
     {
         if let Some(bundle) = self.current_entity().map(func) {
@@ -177,33 +179,36 @@ impl EntityWithBundle for Commands {
     }
 }
 
-fn tilebundle_spawn(tile_bundle: TileBundle, commands: &mut Commands, bitpack: &Res<Bitpack>) {
-    let atlas = bitpack.atlas_handle.clone();
+trait TileSpawn {
+    fn tile_spawn(&mut self, tile_bundle: TileBundle, bitpack: &Res<Bitpack>) -> &mut Self;
+}
 
-    match tile_bundle.0 .0 as char {
-        'M' => commands
-            .spawn(tile_bundle)
-            .with_bundle(level2::mage_bundle())
-            .entity_with_bundle(|e| mage_physics_bundle(e, tile_bundle.2))
-            .with_children(|it| it.spawn(level1::dress_mage(atlas)).end())
-            .end(),
-        '.' => commands
-            .spawn(tile_bundle)
-            .with_bundle(stone_bundle())
-            .entity_with_bundle(|e| stone_physics_bundle(e, tile_bundle.2))
-            .with_children(|it| it.spawn(level1::dress_stone(atlas)).end())
-            .end(),
-        'A' => commands
-            .spawn(sprite_bundle(atlas, 49, Color::DARK_GREEN))
-            .with_bundle(tile_bundle)
-            .entity_with_bundle(|e| static_tile_physics_bundle(e, tile_bundle.2))
-            .end(),
-        'a' => commands
-            .spawn(sprite_bundle(atlas, 48, Color::DARK_GREEN))
-            .with_bundle(tile_bundle)
-            .entity_with_bundle(|e| static_tile_physics_bundle(e, tile_bundle.2))
-            .end(),
-        _ => (),
+impl TileSpawn for Commands {
+    fn tile_spawn(&mut self, tile_bundle: TileBundle, bitpack: &Res<Bitpack>) -> &mut Self {
+        let atlas = bitpack.atlas_handle.clone();
+        let tile_char = tile_bundle.0 .0 as char;
+
+        match tile_char {
+            'M' => self
+                .spawn(tile_bundle)
+                .with_bundle(level2::mage_bundle())
+                .entity_with_bundle(|e| mage_physics_bundle(e, tile_bundle.2))
+                .with_child(|child| child.with_bundle(level1::dress_mage(atlas))),
+            '.' => self
+                .spawn(tile_bundle)
+                .with_bundle(stone_bundle())
+                .entity_with_bundle(|e| stone_physics_bundle(e, tile_bundle.2))
+                .with_child(|child| child.with_bundle(level1::dress_stone(atlas))),
+            'A' => self
+                .spawn(sprite_bundle(atlas, 49, Color::DARK_GREEN))
+                .with_bundle(tile_bundle)
+                .entity_with_bundle(|e| static_tile_physics_bundle(e, tile_bundle.2)),
+            'a' => self
+                .spawn(sprite_bundle(atlas, 48, Color::DARK_GREEN))
+                .with_bundle(tile_bundle)
+                .entity_with_bundle(|e| static_tile_physics_bundle(e, tile_bundle.2)),
+            _ => self,
+        }
     }
 }
 
