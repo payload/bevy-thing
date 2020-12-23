@@ -7,6 +7,7 @@ mod bundle_utils;
 mod commands_ext;
 mod map_asset;
 mod utils;
+mod rapier_debug_render;
 
 mod level1;
 mod level2;
