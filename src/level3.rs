@@ -23,11 +23,7 @@ use level1::{
 };
 use level2::{TileBundle, TileMap, TileMapLoader, TileMapSpawnEvent, TileMapSpawner};
 
-use crate::{
-    bitpack::Bitpack,
-    level1::{self, RandomVec},
-    level2,
-};
+use crate::{bitpack::Bitpack, bundle_utils::{sprite_bundle, static_tile_physics_bundle}, commands_ext::CommandsExt, level1::{self, RandomVec}, level2};
 
 pub struct Level3Plugin;
 
@@ -154,35 +150,6 @@ fn spawn_from_tilemap(
     }
 }
 
-trait CommandsExt {
-    fn with_child(&mut self, f: impl FnOnce(&mut Commands) -> &mut Commands) -> &mut Self;
-
-    fn entity_with_bundle<T>(&mut self, func: impl FnMut(Entity) -> T) -> &mut Self
-    where
-        T: DynamicBundle + Send + Sync + 'static;
-}
-
-impl CommandsExt for Commands {
-    fn with_child(&mut self, f: impl FnOnce(&mut Commands) -> &mut Commands) -> &mut Self {
-        let parent = self.current_entity().expect("Cannot add children because the 'current entity' is not set. You should spawn an entity first.");
-        let child = self.spawn(()).current_entity().unwrap();
-        f(self);
-        self.set_current_entity(parent);
-        self.push_children(parent, &[child]);
-        self
-    }
-
-    fn entity_with_bundle<T>(&mut self, func: impl FnMut(Entity) -> T) -> &mut Self
-    where
-        T: DynamicBundle + Send + Sync + 'static,
-    {
-        if let Some(bundle) = self.current_entity().map(func) {
-            self.with_bundle(bundle);
-        }
-        self
-    }
-}
-
 trait TileSpawn {
     fn tile_spawn(&mut self, tile_bundle: TileBundle, bitpack: &Res<Bitpack>) -> &mut Self;
 }
@@ -197,12 +164,12 @@ impl TileSpawn for Commands {
                 .spawn(tile_bundle)
                 .with_bundle(level2::mage_bundle())
                 .entity_with_bundle(|e| mage_physics_bundle(e, tile_bundle.2))
-                .with_child(|child| child.with_bundle(level1::dress_mage(atlas))),
+                .with_child(level1::dress_mage(atlas)),
             '.' => self
                 .spawn(tile_bundle)
                 .with_bundle(stone_bundle())
                 .entity_with_bundle(|e| stone_physics_bundle(e, tile_bundle.2))
-                .with_child(|child| child.with_bundle(level1::dress_stone(atlas))),
+                .with_child(level1::dress_stone(atlas)),
             'A' => self
                 .spawn(sprite_bundle(atlas, 49, Color::DARK_GREEN))
                 .with_bundle(tile_bundle)
@@ -227,15 +194,6 @@ fn mage_physics_bundle(entity: Entity, transform: Transform) -> impl DynamicBund
     )
 }
 
-fn static_tile_physics_bundle(entity: Entity, transform: Transform) -> impl DynamicBundle {
-    (
-        RigidBodyBuilder::new_static()
-            .translation(transform.translation.x, transform.translation.y)
-            .user_data(entity.to_bits() as u128),
-        ColliderBuilder::cuboid(8.0, 8.0),
-    )
-}
-
 fn stone_physics_bundle(entity: Entity, transform: Transform) -> impl DynamicBundle {
     (
         RigidBodyBuilder::new_dynamic()
@@ -245,18 +203,6 @@ fn stone_physics_bundle(entity: Entity, transform: Transform) -> impl DynamicBun
         ColliderBuilder::ball(3.0).collision_groups(InteractionGroups::new(0x0001, 0x0001)),
         RapierRenderColor(1.0, 0.0, 0.0),
     )
-}
-
-fn sprite_bundle(
-    texture_atlas: Handle<TextureAtlas>,
-    index: u32,
-    color: Color,
-) -> impl DynamicBundle {
-    SpriteSheetBundle {
-        texture_atlas,
-        sprite: TextureAtlasSprite { index, color },
-        ..Default::default()
-    }
 }
 
 fn stone_bundle() -> impl DynamicBundle {

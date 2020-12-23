@@ -2,12 +2,14 @@
 
 mod bitpack;
 mod bitpack_map;
+mod bundle_utils;
+mod commands_ext;
+mod map_asset;
 
 mod level1;
 mod level2;
 mod level3;
-
-mod map_asset;
+mod level4;
 
 use bevy::prelude::*;
 use bitpack::BitpackPlugin;
@@ -21,6 +23,7 @@ fn main() {
             "level1" => level1(),
             "level2" => level2(),
             "level3" => level3(),
+            "level4" => level4::app().run(),
             _ => (),
         }
     }
