@@ -1,10 +1,12 @@
 #![feature(bool_to_option)]
 
+mod bevy_rapier_utils;
 mod bitpack;
 mod bitpack_map;
 mod bundle_utils;
 mod commands_ext;
 mod map_asset;
+mod utils;
 
 mod level1;
 mod level2;

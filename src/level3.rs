@@ -23,7 +23,14 @@ use level1::{
 };
 use level2::{TileBundle, TileMap, TileMapLoader, TileMapSpawnEvent, TileMapSpawner};
 
-use crate::{bitpack::Bitpack, bundle_utils::{sprite_bundle, static_tile_physics_bundle}, commands_ext::CommandsExt, level1::{self, RandomVec}, level2};
+use crate::{
+    bevy_rapier_utils::IntoVector2,
+    bitpack::Bitpack,
+    bundle_utils::{sprite_bundle, static_tile_physics_bundle},
+    commands_ext::CommandsExt,
+    level1::{self, RandomVec},
+    level2,
+};
 
 pub struct Level3Plugin;
 
@@ -52,16 +59,6 @@ impl Plugin for Level3Plugin {
 
 fn setup_physics(mut config: ResMut<RapierConfiguration>) {
     config.gravity = Vector2::new(0.0, 0.0);
-}
-
-trait IntoVector2 {
-    fn into_vector2(self) -> Vector2<f32>;
-}
-
-impl IntoVector2 for Vec3 {
-    fn into_vector2(self) -> Vector2<f32> {
-        Vector2::new(self.x, self.y)
-    }
 }
 
 fn throw_system(

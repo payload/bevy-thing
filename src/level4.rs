@@ -12,16 +12,21 @@ use bevy::{
 };
 use bevy_rapier2d::{
     na::Vector2,
-    physics::{RapierConfiguration, RapierPhysicsPlugin},
-    rapier::{dynamics::RigidBodyBuilder, geometry::ColliderBuilder},
+    physics::{RapierConfiguration, RapierPhysicsPlugin, RigidBodyHandleComponent},
+    rapier::{
+        dynamics::{RigidBodyBuilder, RigidBodySet},
+        geometry::ColliderBuilder,
+    },
 };
 use level2::TileMapSpawner;
 
 use crate::{
+    bevy_rapier_utils::IntoVector2,
     bitpack::{Bitpack, BitpackPlugin},
     bundle_utils::sprite_bundle,
     commands_ext::CommandsExt,
     level2::{self, TileBundle, TileMap, TileMapLoader, TileMapSpawnEvent},
+    utils::*,
 };
 
 pub fn app() -> AppBuilder {
@@ -41,6 +46,7 @@ pub fn app() -> AppBuilder {
         .add_system(spawn_dress.system())
         .add_system(spawn_physics.system())
         .add_system(camera_tracks_player.system())
+        .add_system(player_input.system())
         .add_system(exit_on_esc_system.system());
     app
 }
@@ -152,7 +158,7 @@ impl Level4Commands for Commands {
                 .with(Physics::SolidTile(desc)),
             Marker::Window => self
                 .with(Dress::Bitpack(827, Color::GRAY))
-                .with(Physics::DynamicBall(desc)),
+                .with(Physics::SolidTile(desc)),
             Marker::Door => self.with(Dress::Bitpack(9 * 48 + 6, Color::GRAY)),
             Marker::Bookshelf => self
                 .with(Dress::Bitpack(7 * 48 + 3, Color::SALMON))
@@ -169,17 +175,14 @@ impl Level4Commands for Commands {
             Marker::Dirt => self.with(Dress::Bitpack(3, Color::SALMON)),
             Marker::RandomTree => self
                 .with(Dress::Bitpack(
-                    {
-                        let trees = [48, 49, 50, 51, 52, 53, 99, 100];
-                        trees[rand::random::<usize>() % trees.len()]
-                    },
+                    [48, 49, 50, 51, 52, 53, 99, 100].random(),
                     Color::rgb(0.22, 0.851, 0.451),
                 ))
                 .with(Physics::SolidTile(desc)),
             Marker::PlayerSpawn => self
                 .with(PlayerSpawn)
                 .with(Dress::Bitpack(25, Color::ORANGE))
-                .with(Physics::KinematicBall(desc)),
+                .with(Physics::DynamicBallRotLocked(desc)),
             Marker::Torch => self.with(Dress::Bitpack(15 * 48 + 4, Color::YELLOW)),
             //_ => self.despawn(entity),
         };
@@ -195,7 +198,7 @@ enum Dress {
 enum Physics {
     SolidTile(PhysicalDesc),
     DynamicBall(PhysicalDesc),
-    KinematicBall(PhysicalDesc),
+    DynamicBallRotLocked(PhysicalDesc),
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -245,18 +248,22 @@ fn spawn_physics(
                 (
                     RigidBodyBuilder::new_dynamic()
                         .translation(transform.translation.x, transform.translation.y)
-                        .user_data(user_data),
+                        .user_data(user_data)
+                        .linear_damping(8.0)
+                        .angular_damping(4.0),
                     ColliderBuilder::ball(desc.size.x * 0.5),
                 ),
             ),
-            Physics::KinematicBall(desc) => commands.insert(
+            Physics::DynamicBallRotLocked(desc) => commands.insert(
                 entity,
                 (
-                    RigidBodyBuilder::new_kinematic()
+                    RigidBodyBuilder::new_dynamic()
                         .translation(transform.translation.x, transform.translation.y)
-                        .user_data(user_data),
+                        .user_data(user_data)
+                        .linear_damping(8.0)
+                        .lock_rotations(),
                     ColliderBuilder::ball(desc.size.x * 0.5),
-                )
+                ),
             ),
         };
     }
@@ -296,9 +303,43 @@ fn camera_tracks_player(
 
     if let Ok(mut trans) = transform.get_mut(camera.0) {
         if trans.translation.xy() != mid {
-            let vec = trans.translation.xy().lerp(mid, 0.1);
+            let vec = trans.translation.xy().lerp(mid, 0.125).round();
             trans.translation.x = vec.x;
             trans.translation.y = vec.y;
+        }
+    }
+}
+
+fn player_input(
+    keys: Res<Input<KeyCode>>,
+    //
+    mut bodies: ResMut<RigidBodySet>,
+    query: Query<&RigidBodyHandleComponent, With<PlayerSpawn>>,
+) {
+    let mut cursor = Vec3::default();
+
+    if keys.pressed(KeyCode::W) {
+        cursor.y += 1.0;
+    }
+    if keys.pressed(KeyCode::A) {
+        cursor.x -= 1.0;
+    }
+    if keys.pressed(KeyCode::S) {
+        cursor.y -= 1.0;
+    }
+    if keys.pressed(KeyCode::D) {
+        cursor.x += 1.0;
+    }
+
+    let cursor = if cursor != Vec3::zero() {
+        (70.0 * cursor.normalize()).into_vector2()
+    } else {
+        Vector2::new(0.0, 0.0)
+    };
+
+    for body in query.iter() {
+        if let Some(body) = bodies.get_mut(body.handle()) {
+            body.set_linvel(cursor, true);
         }
     }
 }
