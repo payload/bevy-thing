@@ -8,7 +8,8 @@
 */
 
 use bevy::{
-    input::system::exit_on_esc_system, math::Vec3Swizzles, prelude::*, render::camera::Camera,
+    ecs::DynamicBundle, input::system::exit_on_esc_system, math::Vec3Swizzles, prelude::*,
+    render::camera::Camera,
 };
 use bevy_rapier2d::{
     na::Vector2,
@@ -122,7 +123,7 @@ const TILE_MARKER_MAP: &[(char, Marker)] = {
 
 trait Level4Commands {
     fn spawn_tile(&mut self, tile: TileBundle);
-    fn spawn_marker(&mut self, marker: Marker, pos: Vec3);
+    fn spawn_marker(&mut self, marker: Marker, bundle: impl DynamicBundle + Send + Sync + 'static);
 }
 
 impl Level4Commands for Commands {
@@ -131,16 +132,12 @@ impl Level4Commands for Commands {
             .iter()
             .filter(|(char, _)| *char == tile.0 .0 as char)
         {
-            self.spawn_marker(*marker, tile.2.translation);
+            self.spawn_marker(*marker, tile);
         }
     }
 
-    fn spawn_marker(&mut self, marker: Marker, pos: Vec3) {
-        let _entity = self.entity((
-            marker,
-            Transform::from_translation(pos),
-            GlobalTransform::default(),
-        ));
+    fn spawn_marker(&mut self, marker: Marker, bundle: impl DynamicBundle + Send + Sync + 'static) {
+        self.spawn(bundle).with(marker);
 
         let desc = PhysicalDesc {
             size: Vec2::new(16.0, 16.0),
@@ -291,21 +288,17 @@ fn camera_tracks_player(
     query: Query<&GlobalTransform, With<PlayerSpawn>>,
     mut transform: Query<Mut<Transform>, With<Camera>>,
 ) {
-    let mut iter = query.iter();
-    let mut mid = iter
-        .next()
-        .map(|it| it.translation.xy())
-        .unwrap_or_default();
+    if let Ok(mut camera_trans) = transform.get_mut(camera.0) {
+        let mut mid = camera_trans.translation.xy();
 
-    for trans in iter {
-        mid = 0.5 * (mid + trans.translation.xy());
-    }
+        for trans in query.iter() {
+            mid = 0.5 * (mid + trans.translation.xy());
+        }
 
-    if let Ok(mut trans) = transform.get_mut(camera.0) {
-        if trans.translation.xy() != mid {
-            let vec = trans.translation.xy().lerp(mid, 0.125).round();
-            trans.translation.x = vec.x;
-            trans.translation.y = vec.y;
+        if camera_trans.translation.xy() != mid {
+            let vec = camera_trans.translation.xy().lerp(mid, 0.125).round();
+            camera_trans.translation.x = vec.x;
+            camera_trans.translation.y = vec.y;
         }
     }
 }
