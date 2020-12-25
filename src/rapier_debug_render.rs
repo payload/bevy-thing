@@ -1,14 +1,15 @@
-use bevy::render::mesh::{Indices, VertexAttributeValues};
 use bevy::{
-    pbr::render_graph::FORWARD_PIPELINE_HANDLE,
     prelude::*,
-    render::{pipeline::RenderPipeline, render_graph::base::MainPass},
+    render::mesh::{Indices, VertexAttributeValues},
 };
-use bevy_rapier2d::{physics::{ColliderHandleComponent, RapierConfiguration}, rapier::{dynamics::{BodyStatus, RigidBody, RigidBodySet}, geometry::{Collider, ColliderSet, ShapeType}}, render::RapierRenderColor};
 
-use crate::commands_ext::CommandsExt;
+use crate::bevy_rapier_utils::*;
 
-fn get_color(body: &RigidBody, collider: &Collider, debug_color: Option<&RapierRenderColor>) -> Color {
+fn get_color(
+    body: &RigidBody,
+    collider: &Collider,
+    debug_color: Option<&RapierRenderColor>,
+) -> Color {
     let base = if collider.is_sensor() { 0.6 } else { 0.4 };
     let light = base + 0.2 * rand::random::<f32>();
     let default_color = match body.body_status {
@@ -23,7 +24,15 @@ fn get_color(body: &RigidBody, collider: &Collider, debug_color: Option<&RapierR
     color.set_a(0.5);
     color
 }
-pub struct RapierDebugRender;
+
+fn _sync_transform(pos: &Isometry<f32>, scale: f32, transform: &mut Transform) {
+    // Do not touch the 'z' part of the translation, used in Bevy for 2d layering
+    transform.translation.x = pos.translation.vector.x * scale;
+    transform.translation.y = pos.translation.vector.y * scale;
+
+    let rot = na::UnitQuaternion::new(na::Vector3::z() * pos.rotation.angle());
+    transform.rotation = Quat::from_xyzw(rot.i, rot.j, rot.k, rot.w);
+}
 
 /// System responsible for attaching a PbrBundle to each entity having a collider.
 pub fn rapier_debug_render(
@@ -35,7 +44,7 @@ pub fn rapier_debug_render(
     colliders: ResMut<ColliderSet>,
     query: Query<
         (Entity, &ColliderHandleComponent, Option<&RapierRenderColor>),
-        Without<RapierDebugRender>,
+        Without<Handle<Mesh>>,
     >,
 ) {
     for (entity, collider, debug_color) in &mut query.iter() {
@@ -43,17 +52,17 @@ pub fn rapier_debug_render(
             if let Some(body) = bodies.get(collider.parent()) {
                 let shape = collider.shape();
                 let mesh = match shape.shape_type() {
+                    #[cfg(feature = "dim3")]
+                    ShapeType::Cuboid => Mesh::from(shape::Cube { size: 2.0 }),
                     ShapeType::Cuboid => Mesh::from(shape::Quad {
-                        size: {
-                            let hsize = shape.as_cuboid().unwrap().half_extents;
-                            Vec2::new(hsize.x, hsize.y) * configuration.scale * 2.0
-                        },
+                        size: Vec2::new(2.0, 2.0),
                         flip: false,
                     }),
                     ShapeType::Ball => Mesh::from(shape::Icosphere {
-                        subdivisions: 2,
-                        radius: shape.as_ball().unwrap().radius * configuration.scale,
+                        subdivisions: 1,
+                        radius: 1.0,
                     }),
+
                     ShapeType::Trimesh => {
                         let mut mesh =
                             Mesh::new(bevy::render::pipeline::PrimitiveTopology::TriangleList);
@@ -81,29 +90,51 @@ pub fn rapier_debug_render(
                     _ => unimplemented!(),
                 };
 
-                let pbr = (
-                    Transform::from_translation(Vec3::new(0.0, 0.0, 1.0)),
-                    GlobalTransform::default(),
-                    RenderPipelines::from_pipelines(vec![RenderPipeline::new(
-                        FORWARD_PIPELINE_HANDLE.typed(),
-                    )]),
-                    meshes.add(mesh),
-                    Visible {
+                let scale = match shape.shape_type() {
+                    ShapeType::Cuboid => {
+                        let c = shape.as_cuboid().unwrap();
+                        Vec3::new(c.half_extents.x, c.half_extents.y, 1.0)
+                    }
+                    #[cfg(feature = "dim3")]
+                    ShapeType::Cuboid => {
+                        let c = shape.as_cuboid().unwrap();
+                        Vec3::from_slice_unaligned(c.half_extents.as_slice())
+                    }
+                    ShapeType::Ball => {
+                        let b = shape.as_ball().unwrap();
+                        Vec3::new(b.radius, b.radius, b.radius)
+                    }
+                    ShapeType::Trimesh => Vec3::one(),
+                    _ => unimplemented!(),
+                } * configuration.scale;
+
+                let mut transform = Transform::from_scale(scale);
+                _sync_transform(
+                    collider.position_wrt_parent(),
+                    configuration.scale,
+                    &mut transform,
+                );
+
+                if let ShapeType::Ball = shape.shape_type() {
+                    transform.translation.z -= scale.x;
+                }
+
+                let ground_pbr = PbrBundle {
+                    transform,
+                    mesh: meshes.add(mesh),
+                    visible: Visible {
                         is_transparent: true,
                         is_visible: true,
                     },
-                    materials.add(StandardMaterial {
+                    material: materials.add(StandardMaterial {
                         albedo: get_color(body, collider, debug_color),
                         albedo_texture: None,
                         shaded: false,
                     }),
-                    MainPass::default(),
-                    Draw::default(),
-                );
+                    ..Default::default()
+                };
 
-                let child = commands.entity(pbr);
-                commands.push_children(entity, &[child]);
-                commands.insert_one(entity, RapierDebugRender);
+                commands.insert(entity, ground_pbr);
             }
         }
     }

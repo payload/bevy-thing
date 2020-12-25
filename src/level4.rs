@@ -10,27 +10,20 @@
 use std::fmt::Debug;
 
 use bevy::{
-    asset::LabelId, ecs::DynamicBundle, input::system::exit_on_esc_system, math::Vec3Swizzles,
-    prelude::*, render::camera::Camera,
-};
-use bevy_rapier2d::{
-    na::Vector2,
-    physics::{EventQueue, RapierConfiguration, RapierPhysicsPlugin, RigidBodyHandleComponent},
-    rapier::{
-        dynamics::{RigidBodyBuilder, RigidBodySet},
-        geometry::{ColliderBuilder, ColliderHandle, ColliderSet, Proximity},
-    },
-    render::RapierRenderPlugin,
+    ecs::DynamicBundle, input::system::exit_on_esc_system, math::Vec3Swizzles, prelude::*,
+    render::camera::Camera,
 };
 use level2::TileMapSpawner;
 
 use crate::{
-    bevy_rapier_utils::IntoVector2,
+    bevy_rapier_utils::*,
     bitpack::{Bitpack, BitpackPlugin},
     bundle_utils::sprite_bundle,
     commands_ext::CommandsExt,
+    components::*,
+    entities::player::*,
     level2::{self, TileBundle, TileMap, TileMapLoader, TileMapSpawnEvent},
-    // rapier_debug_render::rapier_debug_render,
+    rapier_debug_render::rapier_debug_render,
     utils::*,
 };
 
@@ -39,7 +32,6 @@ pub fn app() -> AppBuilder {
     app.add_plugins(DefaultPlugins)
         .add_plugin(BitpackPlugin)
         .add_plugin(RapierPhysicsPlugin)
-        .add_plugin(RapierRenderPlugin)
         //
         .add_startup_system(setup.system())
         //
@@ -54,9 +46,11 @@ pub fn app() -> AppBuilder {
         .add_system(camera_tracks_player.system())
         .add_system(player_input.system())
         .add_system(player_sense_area.system())
-        // .add_system(rapier_debug_render.system())
+        .add_system(player_spawn_system.system())
+        .add_system(rapier_debug_render.system())
         // .add_system(print_positions.system())
         .add_system(exit_on_esc_system.system());
+
     app
 }
 
@@ -74,7 +68,7 @@ fn setup(
     let tilemap_handle: Handle<TileMap> = asset_server.load("level4.tilemap");
 
     let tilemap_bundle = (
-        Transform::from_translation(Vec3::new(-64.0, 64.0, 0.0)),
+        Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)),
         GlobalTransform::default(),
         TileMapSpawner::new(tilemap_handle),
         Children::default(),
@@ -163,14 +157,13 @@ impl Level4Commands for Commands {
             .iter()
             .filter(|(char, _)| *char == tile.0 .0 as char)
         {
-            println!("spawn {:?}", marker);
             self.spawn_marker(*marker, (tile.0, tile.2, GlobalTransform::default()));
         }
     }
 
     fn spawn_marker(&mut self, marker: Marker, bundle: impl DynamicBundle + Send + Sync + 'static) {
         let _entity = self.entity(bundle);
-        self.with(marker).with(DebugEntity);
+        self.with(marker);
 
         let desc = PhysicalDesc {
             size: Vec2::new(16.0, 16.0),
@@ -209,29 +202,11 @@ impl Level4Commands for Commands {
                     Color::rgb(0.22, 0.851, 0.451),
                 ))
                 .with(Physics::SolidTile(desc)),
-            Marker::PlayerSpawn => self
-                .with(PlayerSpawn)
-                .with(Dress::Bitpack(25, Color::ORANGE))
-                .with(Physics::DynamicBallRotLocked(desc))
-                .with_a_child(|e| {
-                    (
-                        "player forward sensor".to_string(),
-                        Transform::from_translation(Vec3::new(0.0, 0.0, -1.0)),
-                        ColliderBuilder::ball(desc.size.x * 0.5)
-                            .user_data(e.to_bits() as u128)
-                            .translation(0.0, 8.0)
-                            .sensor(true),
-                    )
-                }),
+            Marker::PlayerSpawn => self.with(PlayerSpawn),
             Marker::Torch => self.with(Dress::Bitpack(15 * 48 + 4, Color::YELLOW)),
             //_ => self.despawn(entity),
         };
     }
-}
-
-#[derive(Copy, Clone, Debug)]
-enum Dress {
-    Bitpack(u32, Color),
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -250,18 +225,30 @@ struct PhysicalDesc {
 fn spawn_dress(
     commands: &mut Commands,
     bitpack: Res<Bitpack>,
-    query: Query<(Entity, &Dress, &Transform, &GlobalTransform), Changed<Dress>>,
+    query: Query<(Entity, &Dress, &Transform, &GlobalTransform)>,
 ) {
-    use Dress::*;
-
     for (entity, &dress, trans, gtrans) in query.iter() {
         let atlas = bitpack.atlas_handle.clone();
 
+        let Vec3 { x, y, .. } = trans.translation;
+        let trans = Transform {
+            translation: Vec3 { x, y, z: 50.0 },
+            rotation: trans.rotation,
+            scale: trans.scale,
+        };
+        let gtrans = GlobalTransform::from_translation(Vec3 { x, y, z: 50.0 });
+
+        if std::env::var("spawn_dress").is_ok() {
+            eprintln!("spawn_dress {:?} {:?}", trans.translation, dress);
+        }
+
+        commands.remove_one::<Dress>(entity);
+
         match dress {
-            Bitpack(index, color) => {
+            Dress::Bitpack(index, color) => {
                 commands
                     .insert(entity, sprite_bundle(atlas, index, color))
-                    .insert(entity, (*trans, *gtrans));
+                    .insert(entity, (trans, gtrans));
             }
         }
     }
@@ -274,6 +261,7 @@ fn spawn_physics(
     for (entity, physics, transform) in query.iter() {
         let user_data = entity.to_bits() as u128;
         commands.set_current_entity(entity);
+        commands.remove_one::<Physics>(entity);
 
         match physics {
             Physics::SolidTile(desc) => commands
@@ -328,11 +316,9 @@ fn tilemap_spawn_events_handler(
     }
 }
 
-struct PlayerSpawn;
-
 fn camera_tracks_player(
     camera: Res<PlayerCamera>,
-    query: Query<&GlobalTransform, With<PlayerSpawn>>,
+    query: Query<&GlobalTransform, With<Player>>,
     mut transform: Query<Mut<Transform>, With<Camera>>,
 ) {
     if let Ok(mut camera_trans) = transform.get_mut(camera.0) {
@@ -354,7 +340,7 @@ fn player_input(
     keys: Res<Input<KeyCode>>,
     //
     mut bodies: ResMut<RigidBodySet>,
-    query: Query<&RigidBodyHandleComponent, With<PlayerSpawn>>,
+    query: Query<&RigidBodyHandleComponent, With<Player>>,
 ) {
     let mut cursor = Vec3::default();
 
