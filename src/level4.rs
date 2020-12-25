@@ -7,20 +7,20 @@
      and some minor building tasks, like chairs and torches or something.
 */
 
+use std::fmt::Debug;
+
 use bevy::{
-    ecs::DynamicBundle, input::system::exit_on_esc_system, math::Vec3Swizzles, prelude::*,
-    render::camera::Camera,
+    asset::LabelId, ecs::DynamicBundle, input::system::exit_on_esc_system, math::Vec3Swizzles,
+    prelude::*, render::camera::Camera,
 };
 use bevy_rapier2d::{
-    na::{Isometry2, Point2, Vector2},
-    physics::{
-        EventQueue, JointBuilderComponent, RapierConfiguration, RapierPhysicsPlugin,
-        RigidBodyHandleComponent,
-    },
+    na::Vector2,
+    physics::{EventQueue, RapierConfiguration, RapierPhysicsPlugin, RigidBodyHandleComponent},
     rapier::{
-        dynamics::{FixedJoint, RigidBodyBuilder, RigidBodyHandle, RigidBodySet},
-        geometry::{ColliderBuilder, ColliderHandle, InteractionGroups, Proximity},
+        dynamics::{RigidBodyBuilder, RigidBodySet},
+        geometry::{ColliderBuilder, ColliderHandle, ColliderSet, Proximity},
     },
+    render::RapierRenderPlugin,
 };
 use level2::TileMapSpawner;
 
@@ -30,7 +30,7 @@ use crate::{
     bundle_utils::sprite_bundle,
     commands_ext::CommandsExt,
     level2::{self, TileBundle, TileMap, TileMapLoader, TileMapSpawnEvent},
-    rapier_debug_render::rapier_debug_render,
+    // rapier_debug_render::rapier_debug_render,
     utils::*,
 };
 
@@ -39,6 +39,7 @@ pub fn app() -> AppBuilder {
     app.add_plugins(DefaultPlugins)
         .add_plugin(BitpackPlugin)
         .add_plugin(RapierPhysicsPlugin)
+        .add_plugin(RapierRenderPlugin)
         //
         .add_startup_system(setup.system())
         //
@@ -53,9 +54,8 @@ pub fn app() -> AppBuilder {
         .add_system(camera_tracks_player.system())
         .add_system(player_input.system())
         .add_system(player_sense_area.system())
-        .add_system(funny_kinematics.system())
-        .add_system(rapier_debug_render.system())
-        .add_system(sync_parent_body_transform.system())
+        // .add_system(rapier_debug_render.system())
+        // .add_system(print_positions.system())
         .add_system(exit_on_esc_system.system());
     app
 }
@@ -67,7 +67,7 @@ fn setup(
     commands: &mut Commands,
 ) {
     config.gravity = Vector2::new(0.0, 0.0);
-    clear_color.0 = Color::rgb(0.278, 0.176, 0.235);
+    //clear_color.0 = Color::rgb(0.278, 0.176, 0.235);
 
     asset_server.watch_for_changes().unwrap();
 
@@ -131,7 +131,6 @@ enum Marker {
     RandomTree,
     PlayerSpawn,
     Torch,
-    DebugSensor,
 }
 
 const TILE_MARKER_MAP: &[(char, Marker)] = {
@@ -150,7 +149,6 @@ const TILE_MARKER_MAP: &[(char, Marker)] = {
         ('A', RandomTree),
         ('P', PlayerSpawn),
         ('o', Oven),
-        ('o', DebugSensor),
     ]
 };
 
@@ -166,12 +164,13 @@ impl Level4Commands for Commands {
             .filter(|(char, _)| *char == tile.0 .0 as char)
         {
             println!("spawn {:?}", marker);
-            self.spawn_marker(*marker, tile);
+            self.spawn_marker(*marker, (tile.0, tile.2, GlobalTransform::default()));
         }
     }
 
     fn spawn_marker(&mut self, marker: Marker, bundle: impl DynamicBundle + Send + Sync + 'static) {
-        self.spawn(bundle).with(marker);
+        let _entity = self.entity(bundle);
+        self.with(marker).with(DebugEntity);
 
         let desc = PhysicalDesc {
             size: Vec2::new(16.0, 16.0),
@@ -213,11 +212,18 @@ impl Level4Commands for Commands {
             Marker::PlayerSpawn => self
                 .with(PlayerSpawn)
                 .with(Dress::Bitpack(25, Color::ORANGE))
-                .with(Physics::DynamicBallRotLocked(desc)),
+                .with(Physics::DynamicBallRotLocked(desc))
+                .with_a_child(|e| {
+                    (
+                        "player forward sensor".to_string(),
+                        Transform::from_translation(Vec3::new(0.0, 0.0, -1.0)),
+                        ColliderBuilder::ball(desc.size.x * 0.5)
+                            .user_data(e.to_bits() as u128)
+                            .translation(0.0, 8.0)
+                            .sensor(true),
+                    )
+                }),
             Marker::Torch => self.with(Dress::Bitpack(15 * 48 + 4, Color::YELLOW)),
-            Marker::DebugSensor => self.with(Physics::StaticSensor(PhysicalDesc {
-                size: Vec2::new(32.0, 32.0),
-            })),
             //_ => self.despawn(entity),
         };
     }
@@ -233,7 +239,7 @@ enum Physics {
     SolidTile(PhysicalDesc),
     DynamicBall(PhysicalDesc),
     DynamicBallRotLocked(PhysicalDesc),
-    StaticSensor(PhysicalDesc),
+    BallSensor(f32, f32, f32),
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -270,72 +276,40 @@ fn spawn_physics(
         commands.set_current_entity(entity);
 
         match physics {
-            Physics::SolidTile(desc) => commands.with_bundle((
-                RigidBodyBuilder::new_static()
+            Physics::SolidTile(desc) => commands
+                .with_bundle((RigidBodyBuilder::new_static()
                     .translation(transform.translation.x, transform.translation.y)
-                    .user_data(user_data),
-                ColliderBuilder::cuboid(desc.size.x * 0.5, desc.size.y * 0.5)
-                    .collision_groups(InteractionGroups::new(0x0002, 0xffff)),
-            )),
-            Physics::DynamicBall(desc) => commands.with_bundle((
-                RigidBodyBuilder::new_dynamic()
+                    .user_data(user_data),))
+                .with_child((
+                    ColliderBuilder::cuboid(desc.size.x * 0.5, desc.size.y * 0.5)
+                        .user_data(user_data), // .collision_groups(InteractionGroups::new(0x0002, 0xffff)),
+                )),
+            Physics::DynamicBall(desc) => commands
+                .with_bundle((RigidBodyBuilder::new_dynamic()
                     .translation(transform.translation.x, transform.translation.y)
                     .user_data(user_data)
                     .linear_damping(8.0)
-                    .angular_damping(4.0),
-                ColliderBuilder::ball(desc.size.x * 0.49)
-                    .collision_groups(InteractionGroups::new(0x0002, 0xffff)),
-            )),
-            Physics::DynamicBallRotLocked(desc) => {
-                commands.with_bundle((
-                    RigidBodyBuilder::new_dynamic()
-                        .translation(transform.translation.x, transform.translation.y)
-                        .user_data(user_data)
-                        .linear_damping(8.0)
-                        .lock_rotations(),
-                    ColliderBuilder::ball(desc.size.x * 0.5)
-                        .collision_groups(InteractionGroups::new(0x0001, 0xffff)),
-                )).spawn((
-                    Transform::default(),
-                    GlobalTransform::default(),
-                    RigidBodyBuilder::new_kinematic()
-                        .translation(transform.translation.x, transform.translation.y)
-                        .user_data(user_data),
-                    ColliderBuilder::cuboid(desc.size.x * 1.7, desc.size.y * 1.7).sensor(true),
-                    BodyTrack { entity, despawn_when_dangling: true },
-                    //.collision_groups(InteractionGroups::new(0x0100, 0xffff)),
-                ))
-            }
-            Physics::StaticSensor(desc) => commands.with_bundle((
-                RigidBodyBuilder::new_static()
+                    .angular_damping(4.0),))
+                .with_child((
+                    ColliderBuilder::ball(desc.size.x * 0.49).user_data(user_data), // .collision_groups(InteractionGroups::new(0x0002, 0xffff)),
+                )),
+            Physics::DynamicBallRotLocked(desc) => commands
+                .with_bundle((RigidBodyBuilder::new_dynamic()
                     .translation(transform.translation.x, transform.translation.y)
-                    .user_data(user_data),
-                ColliderBuilder::cuboid(desc.size.x * 0.5, desc.size.y * 0.5).sensor(true),
-            )),
+                    .user_data(user_data)
+                    .linear_damping(8.0)
+                    .lock_rotations(),))
+                .with_child((
+                    "dynamic ball rot locked".to_string(),
+                    ColliderBuilder::ball(desc.size.x * 0.5)
+                        .user_data(user_data)
+                        .sensor(true), // .collision_groups(InteractionGroups::new(0x0001, 0xffff)),
+                )),
+            Physics::BallSensor(x, y, r) => commands.with_bundle((ColliderBuilder::ball(*r)
+                .translation(transform.translation.x, transform.translation.y)
+                .user_data(user_data)
+                .sensor(true),)),
         };
-    }
-}
-
-struct BodyTrack {
-    entity: Entity,
-    despawn_when_dangling: bool,
-}
-
-fn sync_parent_body_transform(
-    commands: &mut Commands,
-    mut bodies: ResMut<RigidBodySet>,
-    query: Query<(Entity, &BodyTrack, &RigidBodyHandleComponent)>,
-    transform: Query<&GlobalTransform>,
-) {
-    for (entity, track, body) in query.iter() {
-        if let Ok(transform) = transform.get(track.entity) {
-            if let Some(body) = bodies.get_mut(body.handle()) {
-                let pos = Isometry2::translation(transform.translation.x, transform.translation.y);
-                body.set_position(pos, true);
-            }
-        } else if track.despawn_when_dangling {
-            commands.despawn_recursive(entity);
-        }
     }
 }
 
@@ -413,37 +387,41 @@ fn player_input(
 fn player_sense_area(
     keys: Res<Input<KeyCode>>,
     events: Res<EventQueue>,
-    mut ui: ResMut<PlayerSensingUi>,
+    ui: Res<PlayerSensingUi>,
     mut text: Query<Mut<Text>>,
     marker: Query<&Marker>,
-    bodies: Res<RigidBodySet>,
+    label: Query<&String>,
+    _bodies: Res<RigidBodySet>,
+    colliders: Res<ColliderSet>,
 ) {
-    if let Ok(text) = text.get_mut(ui.0) {
+    let get_info = |collider| {
+        let entity = colliders.get_entity(collider);
+        let marker = entity.and_then(|e| marker.get(e).ok().cloned());
+        let label = entity.and_then(|e| label.get(e).ok().cloned());
+        if let Some(marker) = marker {
+            Some(format!("{:?}", marker))
+        } else if label.is_some() {
+            label
+        } else {
+            None
+        }
+    };
+
+    if let Ok(mut text) = text.get_mut(ui.0) {
         if keys.just_pressed(KeyCode::E) {}
         if keys.just_released(KeyCode::E) {}
-
-        if events.contact_events.len() != 0 && events.proximity_events.len() != 0 {
-            println!(
-                "c{:?} p{:?}",
-                events.contact_events.len(),
-                events.proximity_events.len()
-            );
-        }
 
         while let Ok(event) = events.proximity_events.pop() {
             match event.new_status {
                 Proximity::Intersecting => {
-                    println!("intersect");
-                    if let Some(entity) = bodies.get_entity(event.collider1) {
-                        if let Ok(marker) = marker.get(entity) {
-                            println!("1 {:?}", marker);
-                        }
-                    }
+                    let info1 = get_info(event.collider1);
+                    let info2 = get_info(event.collider2);
 
-                    if let Some(entity) = bodies.get_entity(event.collider2) {
-                        if let Ok(marker) = marker.get(entity) {
-                            println!("2 {:?}", marker);
-                        }
+                    if info1.is_some() || info2.is_some() {
+                        let info1 = info1.unwrap_or_default();
+                        let info2 = info2.unwrap_or_default();
+                        println!("intersect {} {}", info1, info2);
+                        text.value = format!("{} {}", info1, info2);
                     }
                 }
                 Proximity::WithinMargin => {}
@@ -464,10 +442,44 @@ impl RigidBodySetExt for RigidBodySet {
     }
 }
 
+impl RigidBodySetExt for ColliderSet {
+    fn get_entity(&self, handle: ColliderHandle) -> Option<Entity> {
+        self.get(handle)
+            .map(|it| Entity::from_bits(it.user_data as u64))
+    }
+}
+
 struct DebugEntity;
 
-fn funny_kinematics(keys: Res<Input<KeyCode>>, query: Query<Entity, With<DebugEntity>>) {
-    if keys.just_pressed(KeyCode::T) {
-        for entity in query.iter() {}
+fn _print_positions(
+    bodies: Res<RigidBodySet>,
+    query: Query<
+        (
+            &Transform,
+            &GlobalTransform,
+            Option<&RigidBodyHandleComponent>,
+            Option<&Marker>,
+        ),
+        With<DebugEntity>,
+    >,
+) {
+    println!("");
+    for (trans, gtrans, body, marker) in query.iter() {
+        let Vec3 { x, y, .. } = trans.translation;
+        let Vec3 { x: gx, y: gy, .. } = gtrans.translation;
+        if let Some(body) = body.and_then(|it| bodies.get(it.handle())) {
+            let vec = body.position().translation.vector;
+            println!(
+                "{:18} {:5.?}",
+                format!("{:?}", marker),
+                (
+                    (x as i32, y as i32),
+                    (gx as i32, gy as i32),
+                    (vec[0] as i32, vec[1] as i32)
+                )
+            );
+        } else {
+            println!("{:5.?}", ((x as i32, y as i32), (gx as i32, gy as i32)));
+        }
     }
 }

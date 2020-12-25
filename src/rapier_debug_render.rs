@@ -4,19 +4,13 @@ use bevy::{
     prelude::*,
     render::{pipeline::RenderPipeline, render_graph::base::MainPass},
 };
-use bevy_rapier2d::{
-    na::{UnitQuaternion, Vector3},
-    physics::{ColliderHandleComponent, RapierConfiguration},
-    rapier::{
-        dynamics::{BodyStatus, RigidBody, RigidBodySet},
-        geometry::{ColliderSet, ShapeType},
-        math::Isometry,
-    },
-    render::RapierRenderColor,
-};
+use bevy_rapier2d::{physics::{ColliderHandleComponent, RapierConfiguration}, rapier::{dynamics::{BodyStatus, RigidBody, RigidBodySet}, geometry::{Collider, ColliderSet, ShapeType}}, render::RapierRenderColor};
 
-fn get_color(body: &RigidBody, debug_color: Option<&RapierRenderColor>) -> Color {
-    let light = 0.6 + 0.2 * rand::random::<f32>();
+use crate::commands_ext::CommandsExt;
+
+fn get_color(body: &RigidBody, collider: &Collider, debug_color: Option<&RapierRenderColor>) -> Color {
+    let base = if collider.is_sensor() { 0.6 } else { 0.4 };
+    let light = base + 0.2 * rand::random::<f32>();
     let default_color = match body.body_status {
         BodyStatus::Static => Color::rgb(0.2 + light, light, light),
         BodyStatus::Dynamic => Color::rgb(light, 0.2 + light, light),
@@ -29,6 +23,7 @@ fn get_color(body: &RigidBody, debug_color: Option<&RapierRenderColor>) -> Color
     color.set_a(0.5);
     color
 }
+pub struct RapierDebugRender;
 
 /// System responsible for attaching a PbrBundle to each entity having a collider.
 pub fn rapier_debug_render(
@@ -40,7 +35,7 @@ pub fn rapier_debug_render(
     colliders: ResMut<ColliderSet>,
     query: Query<
         (Entity, &ColliderHandleComponent, Option<&RapierRenderColor>),
-        Without<Handle<Mesh>>,
+        Without<RapierDebugRender>,
     >,
 ) {
     for (entity, collider, debug_color) in &mut query.iter() {
@@ -87,6 +82,8 @@ pub fn rapier_debug_render(
                 };
 
                 let pbr = (
+                    Transform::from_translation(Vec3::new(0.0, 0.0, 1.0)),
+                    GlobalTransform::default(),
                     RenderPipelines::from_pipelines(vec![RenderPipeline::new(
                         FORWARD_PIPELINE_HANDLE.typed(),
                     )]),
@@ -96,7 +93,7 @@ pub fn rapier_debug_render(
                         is_visible: true,
                     },
                     materials.add(StandardMaterial {
-                        albedo: get_color(&body, debug_color),
+                        albedo: get_color(body, collider, debug_color),
                         albedo_texture: None,
                         shaded: false,
                     }),
@@ -104,17 +101,10 @@ pub fn rapier_debug_render(
                     Draw::default(),
                 );
 
-                commands.insert(entity, pbr);
+                let child = commands.entity(pbr);
+                commands.push_children(entity, &[child]);
+                commands.insert_one(entity, RapierDebugRender);
             }
         }
     }
-}
-
-fn sync_transform(pos: &Isometry<f32>, scale: f32, transform: &mut Transform) {
-    // Do not touch the 'z' part of the translation, used in Bevy for 2d layering
-    transform.translation.x = pos.translation.vector.x * scale;
-    transform.translation.y = pos.translation.vector.y * scale;
-
-    let rot = UnitQuaternion::new(Vector3::z() * pos.rotation.angle());
-    transform.rotation = Quat::from_xyzw(rot.i, rot.j, rot.k, rot.w);
 }
