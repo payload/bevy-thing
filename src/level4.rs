@@ -358,7 +358,7 @@ fn player_input(
     }
 
     let cursor = if cursor != Vec3::zero() {
-        (70.0 * cursor.normalize()).into_vector2()
+        (140.0 * cursor.normalize()).into_vector2()
     } else {
         Vector2::new(0.0, 0.0)
     };

@@ -12,17 +12,7 @@ pub fn spawn_player(commands: &mut Commands, transform: Transform) {
     commands
         .with(transform)
         .with(GlobalTransform::default())
-        .with(Dress::Bitpack(25, Color::ORANGE));
-    commands
-        .with_bundle((RigidBodyBuilder::new_dynamic()
-            .translation(transform.translation.x, transform.translation.y)
-            .user_data(entity.to_user_data()),))
-        .with_child((
-            ColliderBuilder::ball(4.0).user_data(entity.to_user_data()), // .collision_groups(InteractionGroups::new(0x0002, 0xffff)),
-        ));
-
-    #[cfg(any())]
-    commands
+        .with(Dress::Bitpack(25, Color::ORANGE))
         .with(
             RigidBodyBuilder::new_dynamic()
                 .translation(x, y)
@@ -31,15 +21,13 @@ pub fn spawn_player(commands: &mut Commands, transform: Transform) {
                 .lock_rotations(),
         )
         .with_child((
-            ColliderBuilder::ball(4.0)
-                .user_data(entity.to_user_data())
-                .sensor(true), // .collision_groups(InteractionGroups::new(0x0001, 0xffff)),
+            ColliderBuilder::ball(8.0)
+                .user_data(entity.to_user_data()),
         ))
         .with_a_child(|e| {
             (
                 "player forward sensor".to_string(),
-                Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)),
-                ColliderBuilder::ball(4.0)
+                ColliderBuilder::ball(8.0)
                     .user_data(e.to_bits() as u128)
                     .translation(0.0, 8.0)
                     .sensor(true),
