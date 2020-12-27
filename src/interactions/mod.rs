@@ -1,5 +1,6 @@
 use crate::bevy_rapier_utils::*;
 use bevy::prelude::*;
+use rand::prelude::*;
 
 pub enum GameInteraction {
     PushAway(PushAway),
@@ -35,7 +36,10 @@ pub fn push_away(
         .ok()
         .and_then(|body| bodies.get_mut(body.handle()))
     {
-        let dir = Vector2::new(push.rel_impulse, push.rel_impulse);
+        let mut rng = rand::thread_rng();
+        let dir = (push.rel_impulse
+            * Vec2::new(rng.gen_range(-1.0, 1.0), rng.gen_range(-1.0, 1.0)).normalize())
+        .into_vector2();
         body.set_linvel(dir, true);
     }
 }
