@@ -355,7 +355,7 @@ fn manage_proximity_set(
     rapier_events: Res<EventQueue>,
     colliders: Res<ColliderSet>,
     bodies: Res<RigidBodySet>,
-    mut proximity: Query<Mut<ProximitySet>>,
+    mut proximity_q: Query<Mut<ProximitySet>>,
 ) {
     let get_parent_entity = |h| colliders.get_parent(h).and_then(|p| bodies.get_entity(p));
 
@@ -371,20 +371,20 @@ fn manage_proximity_set(
 
         match new_status {
             Proximity::Intersecting => {
-                for mut proximity in e1.and_then(|e| proximity.get_mut(e).ok()) {
+                for mut proximity in e1.and_then(|e| proximity_q.get_mut(e).ok()) {
                     get_parent_entity(c2).map(|e| proximity.insert(e));
                 }
-                for mut inbox in e2.and_then(|e| proximity.get_mut(e).ok()) {
-                    get_parent_entity(c1).map(|e| inbox.insert(e));
+                for mut proximity in e2.and_then(|e| proximity_q.get_mut(e).ok()) {
+                    get_parent_entity(c1).map(|e| proximity.insert(e));
                 }
             }
             Proximity::WithinMargin => {}
             Proximity::Disjoint => {
-                for mut inbox in e1.and_then(|e| proximity.get_mut(e).ok()) {
-                    get_parent_entity(c2).map(|e| inbox.remove(&e));
+                for mut proximity in e1.and_then(|e| proximity_q.get_mut(e).ok()) {
+                    get_parent_entity(c2).map(|e| proximity.remove(&e));
                 }
-                for mut inbox in e2.and_then(|e| proximity.get_mut(e).ok()) {
-                    get_parent_entity(c1).map(|e| inbox.remove(&e));
+                for mut proximity in e2.and_then(|e| proximity_q.get_mut(e).ok()) {
+                    get_parent_entity(c1).map(|e| proximity.remove(&e));
                 }
             }
         }
