@@ -63,7 +63,7 @@ pub fn player_spawn_system(
 }
 
 pub fn player_handle_input_events(
-    commands: &mut Commands,
+    _commands: &mut Commands,
     //
     mut reader: Local<EventReader<PlayerEvent>>,
     events: Res<Events<PlayerEvent>>,

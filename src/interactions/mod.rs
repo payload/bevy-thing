@@ -3,7 +3,6 @@ use bevy::prelude::*;
 
 pub enum GameInteraction {
     PushAway(PushAway),
-    Rotate,
 }
 
 pub struct PushAway {
@@ -13,7 +12,7 @@ pub struct PushAway {
 }
 
 pub fn interactions_system(
-    commands: &mut Commands,
+    _commands: &mut Commands,
     mut reader: Local<EventReader<GameInteraction>>,
     events: Res<Events<GameInteraction>>,
     mut bodies: ResMut<RigidBodySet>,
@@ -22,7 +21,6 @@ pub fn interactions_system(
     for effect in reader.iter(&events) {
         match effect {
             GameInteraction::PushAway(push) => push_away(push, &mut bodies, &body),
-            GameInteraction::Rotate => todo!(),
         }
     }
 }

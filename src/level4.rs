@@ -68,7 +68,7 @@ fn setup(
     commands: &mut Commands,
 ) {
     config.gravity = Vector2::new(0.0, 0.0);
-    //clear_color.0 = Color::rgb(0.278, 0.176, 0.235);
+    clear_color.0 = Color::rgb(0.278, 0.176, 0.235);
 
     asset_server.watch_for_changes().unwrap();
 
@@ -204,8 +204,6 @@ impl Level4Commands for Commands {
 enum Physics {
     SolidTile(PhysicalDesc),
     DynamicBall(PhysicalDesc),
-    DynamicBallRotLocked(PhysicalDesc),
-    BallSensor(f32, f32, f32),
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -218,7 +216,7 @@ fn spawn_dress(
     bitpack: Res<Bitpack>,
     query: Query<(Entity, &Dress, &Transform, &GlobalTransform)>,
 ) {
-    for (entity, &dress, trans, gtrans) in query.iter() {
+    for (entity, &dress, trans, _gtrans) in query.iter() {
         let atlas = bitpack.atlas_handle.clone();
 
         let Vec3 { x, y, .. } = trans.translation;
@@ -272,22 +270,6 @@ fn spawn_physics(
                 .with_child((
                     ColliderBuilder::ball(desc.size.x * 0.49).user_data(user_data), // .collision_groups(InteractionGroups::new(0x0002, 0xffff)),
                 )),
-            Physics::DynamicBallRotLocked(desc) => commands
-                .with_bundle((RigidBodyBuilder::new_dynamic()
-                    .translation(transform.translation.x, transform.translation.y)
-                    .user_data(user_data)
-                    .linear_damping(8.0)
-                    .lock_rotations(),))
-                .with_child((
-                    "dynamic ball rot locked".to_string(),
-                    ColliderBuilder::ball(desc.size.x * 0.5)
-                        .user_data(user_data)
-                        .sensor(true), // .collision_groups(InteractionGroups::new(0x0001, 0xffff)),
-                )),
-            Physics::BallSensor(x, y, r) => commands.with_bundle((ColliderBuilder::ball(*r)
-                .translation(transform.translation.x, transform.translation.y)
-                .user_data(user_data)
-                .sensor(true),)),
         };
     }
 }
