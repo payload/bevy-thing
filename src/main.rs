@@ -10,6 +10,7 @@ mod utils;
 mod rapier_debug_render;
 mod entities;
 mod components;
+mod interactions;
 
 mod level1;
 mod level2;

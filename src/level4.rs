@@ -11,7 +11,7 @@ use std::fmt::Debug;
 
 use bevy::{
     ecs::DynamicBundle, input::system::exit_on_esc_system, math::Vec3Swizzles, prelude::*,
-    render::camera::Camera,
+    render::camera::Camera, utils::HashSet,
 };
 use level2::TileMapSpawner;
 
@@ -22,6 +22,7 @@ use crate::{
     commands_ext::CommandsExt,
     components::*,
     entities::player::*,
+    interactions::*,
     level2::{self, TileBundle, TileMap, TileMapLoader, TileMapSpawnEvent},
     rapier_debug_render::rapier_debug_render,
     utils::*,
@@ -40,14 +41,20 @@ pub fn app() -> AppBuilder {
         .init_asset_loader::<TileMapLoader>()
         .add_event::<TileMapSpawnEvent>()
         //
+        .add_event::<PlayerEvent>()
+        .add_event::<GameInteraction>()
+        //
         .add_system_to_stage(stage::PRE_UPDATE, tilemap_spawn_events_handler.system())
         .add_system(spawn_dress.system())
         .add_system(spawn_physics.system())
         .add_system(camera_tracks_player.system())
         .add_system(player_input.system())
-        .add_system(player_sense_area.system())
+        .add_system(proximity_inbox.system())
         .add_system(player_spawn_system.system())
+        .add_system(player_handle_input_events.system())
         .add_system(rapier_debug_render.system())
+        //
+        .add_system(interactions_system.system())
         // .add_system(print_positions.system())
         .add_system(exit_on_esc_system.system());
 
@@ -109,23 +116,6 @@ fn setup(
 
 struct PlayerCamera(Entity);
 struct PlayerSensingUi(Entity);
-
-#[derive(Copy, Clone, Debug)]
-enum Marker {
-    Wall,
-    Chair,
-    Table,
-    Window,
-    Door,
-    Bookshelf,
-    Mirror,
-    Oven,
-    Bed,
-    Dirt,
-    RandomTree,
-    PlayerSpawn,
-    Torch,
-}
 
 const TILE_MARKER_MAP: &[(char, Marker)] = {
     use Marker::*;
@@ -204,6 +194,7 @@ impl Level4Commands for Commands {
                 .with(Physics::SolidTile(desc)),
             Marker::PlayerSpawn => self.with(PlayerSpawn),
             Marker::Torch => self.with(Dress::Bitpack(15 * 48 + 4, Color::YELLOW)),
+            Marker::Player => todo!(),
             //_ => self.despawn(entity),
         };
     }
@@ -338,6 +329,7 @@ fn camera_tracks_player(
 
 fn player_input(
     keys: Res<Input<KeyCode>>,
+    mut events: ResMut<Events<PlayerEvent>>,
     //
     mut bodies: ResMut<RigidBodySet>,
     query: Query<&RigidBodyHandleComponent, With<Player>>,
@@ -368,104 +360,56 @@ fn player_input(
             body.set_linvel(cursor, true);
         }
     }
+
+    if keys.just_pressed(KeyCode::E) {
+        events.send(PlayerEvent::Interact);
+    }
+    if keys.just_pressed(KeyCode::F) {
+        events.send(PlayerEvent::Observe);
+    }
 }
 
-fn player_sense_area(
-    keys: Res<Input<KeyCode>>,
-    events: Res<EventQueue>,
-    ui: Res<PlayerSensingUi>,
-    mut text: Query<Mut<Text>>,
-    marker: Query<&Marker>,
-    label: Query<&String>,
-    _bodies: Res<RigidBodySet>,
+fn proximity_inbox(
+    rapier_events: Res<EventQueue>,
     colliders: Res<ColliderSet>,
-) {
-    let get_info = |collider| {
-        let entity = colliders.get_entity(collider);
-        let marker = entity.and_then(|e| marker.get(e).ok().cloned());
-        let label = entity.and_then(|e| label.get(e).ok().cloned());
-        if let Some(marker) = marker {
-            Some(format!("{:?}", marker))
-        } else if label.is_some() {
-            label
-        } else {
-            None
-        }
-    };
-
-    if let Ok(mut text) = text.get_mut(ui.0) {
-        if keys.just_pressed(KeyCode::E) {}
-        if keys.just_released(KeyCode::E) {}
-
-        while let Ok(event) = events.proximity_events.pop() {
-            match event.new_status {
-                Proximity::Intersecting => {
-                    let info1 = get_info(event.collider1);
-                    let info2 = get_info(event.collider2);
-
-                    if info1.is_some() || info2.is_some() {
-                        let info1 = info1.unwrap_or_default();
-                        let info2 = info2.unwrap_or_default();
-                        println!("intersect {} {}", info1, info2);
-                        text.value = format!("{} {}", info1, info2);
-                    }
-                }
-                Proximity::WithinMargin => {}
-                Proximity::Disjoint => {}
-            }
-        }
-    }
-}
-
-trait RigidBodySetExt {
-    fn get_entity(&self, handle: ColliderHandle) -> Option<Entity>;
-}
-
-impl RigidBodySetExt for RigidBodySet {
-    fn get_entity(&self, handle: ColliderHandle) -> Option<Entity> {
-        self.get(handle)
-            .map(|body| Entity::from_bits(body.user_data as u64))
-    }
-}
-
-impl RigidBodySetExt for ColliderSet {
-    fn get_entity(&self, handle: ColliderHandle) -> Option<Entity> {
-        self.get(handle)
-            .map(|it| Entity::from_bits(it.user_data as u64))
-    }
-}
-
-struct DebugEntity;
-
-fn _print_positions(
     bodies: Res<RigidBodySet>,
-    query: Query<
-        (
-            &Transform,
-            &GlobalTransform,
-            Option<&RigidBodyHandleComponent>,
-            Option<&Marker>,
-        ),
-        With<DebugEntity>,
-    >,
+    mut inbox: Query<Mut<HashSet<Entity>>>,
 ) {
-    println!("");
-    for (trans, gtrans, body, marker) in query.iter() {
-        let Vec3 { x, y, .. } = trans.translation;
-        let Vec3 { x: gx, y: gy, .. } = gtrans.translation;
-        if let Some(body) = body.and_then(|it| bodies.get(it.handle())) {
-            let vec = body.position().translation.vector;
-            println!(
-                "{:18} {:5.?}",
-                format!("{:?}", marker),
-                (
-                    (x as i32, y as i32),
-                    (gx as i32, gy as i32),
-                    (vec[0] as i32, vec[1] as i32)
-                )
-            );
-        } else {
-            println!("{:5.?}", ((x as i32, y as i32), (gx as i32, gy as i32)));
+    while let Ok(event) = rapier_events.proximity_events.pop() {
+        match event.new_status {
+            Proximity::Intersecting => {
+                let mut add_entity_to_inbox = |h1, h2| {
+                    colliders
+                        .get_entity(h1)
+                        .and_then(|e| inbox.get_mut(e).ok())
+                        .map(|mut inbox| {
+                            colliders
+                                .get_parent(h2)
+                                .and_then(|p| bodies.get_entity(p))
+                                .map(|e| inbox.insert(e))
+                        });
+                };
+
+                add_entity_to_inbox(event.collider1, event.collider2);
+                add_entity_to_inbox(event.collider2, event.collider1);
+            }
+            Proximity::WithinMargin => {}
+            Proximity::Disjoint => {
+                let mut remove_entity_from_inbox = |h1, h2| {
+                    colliders
+                        .get_entity(h1)
+                        .and_then(|e| inbox.get_mut(e).ok())
+                        .map(|mut inbox| {
+                            colliders
+                                .get_parent(h2)
+                                .and_then(|p| bodies.get_entity(p))
+                                .map(|e| inbox.remove(&e))
+                        });
+                };
+
+                remove_entity_from_inbox(event.collider1, event.collider2);
+                remove_entity_from_inbox(event.collider2, event.collider1);
+            }
         }
     }
 }
