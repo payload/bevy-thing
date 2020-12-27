@@ -11,7 +11,7 @@ use std::fmt::Debug;
 
 use bevy::{
     ecs::DynamicBundle, input::system::exit_on_esc_system, math::Vec3Swizzles, prelude::*,
-    render::camera::Camera, utils::HashSet,
+    render::camera::Camera,
 };
 use level2::TileMapSpawner;
 
@@ -49,7 +49,7 @@ pub fn app() -> AppBuilder {
         .add_system(spawn_physics.system())
         .add_system(camera_tracks_player.system())
         .add_system(player_input.system())
-        .add_system(proximity_inbox.system())
+        .add_system(manage_proximity_set.system())
         .add_system(player_spawn_system.system())
         .add_system(player_handle_input_events.system())
         .add_system(rapier_debug_render.system())
@@ -351,46 +351,41 @@ fn player_input(
     }
 }
 
-fn proximity_inbox(
+fn manage_proximity_set(
     rapier_events: Res<EventQueue>,
     colliders: Res<ColliderSet>,
     bodies: Res<RigidBodySet>,
-    mut inbox: Query<Mut<HashSet<Entity>>>,
+    mut proximity: Query<Mut<ProximitySet>>,
 ) {
-    while let Ok(event) = rapier_events.proximity_events.pop() {
-        match event.new_status {
-            Proximity::Intersecting => {
-                let mut add_entity_to_inbox = |h1, h2| {
-                    colliders
-                        .get_entity(h1)
-                        .and_then(|e| inbox.get_mut(e).ok())
-                        .map(|mut inbox| {
-                            colliders
-                                .get_parent(h2)
-                                .and_then(|p| bodies.get_entity(p))
-                                .map(|e| inbox.insert(e))
-                        });
-                };
+    let get_parent_entity = |h| colliders.get_parent(h).and_then(|p| bodies.get_entity(p));
 
-                add_entity_to_inbox(event.collider1, event.collider2);
-                add_entity_to_inbox(event.collider2, event.collider1);
+    while let Ok(ProximityEvent {
+        collider1: c1,
+        collider2: c2,
+        new_status,
+        ..
+    }) = rapier_events.proximity_events.pop()
+    {
+        let e1 = colliders.get_entity(c1);
+        let e2 = colliders.get_entity(c2);
+
+        match new_status {
+            Proximity::Intersecting => {
+                for mut proximity in e1.and_then(|e| proximity.get_mut(e).ok()) {
+                    get_parent_entity(c2).map(|e| proximity.insert(e));
+                }
+                for mut inbox in e2.and_then(|e| proximity.get_mut(e).ok()) {
+                    get_parent_entity(c1).map(|e| inbox.insert(e));
+                }
             }
             Proximity::WithinMargin => {}
             Proximity::Disjoint => {
-                let mut remove_entity_from_inbox = |h1, h2| {
-                    colliders
-                        .get_entity(h1)
-                        .and_then(|e| inbox.get_mut(e).ok())
-                        .map(|mut inbox| {
-                            colliders
-                                .get_parent(h2)
-                                .and_then(|p| bodies.get_entity(p))
-                                .map(|e| inbox.remove(&e))
-                        });
-                };
-
-                remove_entity_from_inbox(event.collider1, event.collider2);
-                remove_entity_from_inbox(event.collider2, event.collider1);
+                for mut inbox in e1.and_then(|e| proximity.get_mut(e).ok()) {
+                    get_parent_entity(c2).map(|e| inbox.remove(&e));
+                }
+                for mut inbox in e2.and_then(|e| proximity.get_mut(e).ok()) {
+                    get_parent_entity(c1).map(|e| inbox.remove(&e));
+                }
             }
         }
     }

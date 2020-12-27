@@ -1,4 +1,4 @@
-use bevy::prelude::*;
+use bevy::{prelude::*, utils::HashSet};
 
 #[derive(Copy, Clone, Debug)]
 pub enum Dress {
@@ -22,3 +22,5 @@ pub enum Marker {
     Player,
     Torch,
 }
+
+pub type ProximitySet = HashSet<Entity>;

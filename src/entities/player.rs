@@ -1,4 +1,4 @@
-use bevy::{prelude::*, utils::HashSet};
+use bevy::prelude::*;
 
 use crate::{
     bevy_rapier_utils::*,
@@ -42,7 +42,7 @@ pub fn spawn_player(commands: &mut Commands, transform: Transform) {
         .with_a_child(|e| {
             player.forward_sensor = Some(e);
             (
-                HashSet::<Entity>::default(),
+                ProximitySet::default(),
                 ColliderBuilder::ball(8.0)
                     .user_data(e.to_bits() as u128)
                     .translation(0.0, 8.0)
@@ -70,7 +70,7 @@ pub fn player_handle_input_events(
     mut interactions: ResMut<Events<GameInteraction>>,
     //
     query: Query<(Entity, &Player)>,
-    proximity: Query<&HashSet<Entity>>,
+    proximity: Query<&ProximitySet>,
     observe: Query<&Marker>,
 ) {
     for ev in reader.iter(&events) {
@@ -92,7 +92,7 @@ pub fn player_handle_input_events(
 fn player_interact(
     entity: Entity,
     player: &Player,
-    proximity: &Query<&HashSet<Entity>>,
+    proximity: &Query<&ProximitySet>,
     interactions: &mut Events<GameInteraction>,
 ) {
     for proximity in player.forward_sensor.and_then(|it| proximity.get(it).ok()) {
@@ -109,7 +109,7 @@ fn player_interact(
 fn player_observe(
     _entity: Entity,
     player: &Player,
-    proximity: &Query<&HashSet<Entity>>,
+    proximity: &Query<&ProximitySet>,
     observe: &Query<&Marker>,
 ) {
     for proximity in player.forward_sensor.and_then(|it| proximity.get(it).ok()) {
