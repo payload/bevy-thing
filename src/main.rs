@@ -31,6 +31,7 @@ fn main() {
             "level2" => level2(),
             "level3" => level3(),
             "level4" => level4::app().run(),
+            "steering" => systems::steering::example(),
             _ => (),
         }
     }
