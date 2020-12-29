@@ -13,3 +13,5 @@ noise = "0.6"
 rand = "0.5"
 anyhow = "*"
 serde = "*"
+bevy_prototype_lyon = { git = "https://github.com/Nilirad/bevy_prototype_lyon.git", branch = "master" }
+float_eq = "0.5"
