@@ -4,10 +4,20 @@ use bevy::{
     render::{pipeline::RenderPipeline, render_graph::base::MainPass},
     sprite::{QUAD_HANDLE, SPRITE_PIPELINE_HANDLE},
 };
+use bevy_rapier2d::{
+    physics::{RapierConfiguration, RapierPhysicsPlugin, RigidBodyHandleComponent},
+    rapier::{
+        dynamics::{RigidBodyBuilder, RigidBodySet},
+        geometry::ColliderBuilder,
+        math::Isometry,
+    },
+};
 use rand::Rng;
 
+use crate::bevy_rapier_utils::IntoVector2;
+
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Default)]
-struct Boid {
+pub struct Boid {
     id: usize,
     flock_id: usize,
     velocity: Vec2,
@@ -16,7 +26,7 @@ struct Boid {
 }
 
 #[derive(Debug, Copy, Clone)]
-struct FlockParameters {
+pub struct FlockParameters {
     id: usize,
     boid_count: usize,
     color: Color,
@@ -34,7 +44,7 @@ struct FlockAverages {
     boids: Vec<(Boid, Vec2)>,
 }
 
-type Flocks = Vec<FlockParameters>;
+pub type Flocks = Vec<FlockParameters>;
 
 fn spawn_flocks(commands: &mut Commands, flocks: &Flocks) {
     let mut rng = rand::thread_rng();
@@ -98,7 +108,7 @@ fn calculate_averages(
     *averages = result;
 }
 
-fn update_flocks(
+fn flocks_update_system(
     time: Res<Time>,
     mut averages: Local<Vec<FlockAverages>>,
     flocks: ResMut<Flocks>,
@@ -180,7 +190,7 @@ fn calculate_cohesion(&position: &Vec2, &average_position: &Vec2, flock_radius: 
     }
 }
 
-fn update_boid(time: Res<Time>, mut boids_q: Query<(&Boid, Mut<Transform>)>) {
+pub fn boid_arcade_update_system(time: Res<Time>, mut boids_q: Query<(&Boid, Mut<Transform>)>) {
     for (boid, mut trans) in boids_q.iter_mut() {
         let vel = (boid.velocity * time.delta_seconds()).extend(0.0);
         trans.translation += vel;
@@ -188,7 +198,7 @@ fn update_boid(time: Res<Time>, mut boids_q: Query<(&Boid, Mut<Transform>)>) {
     }
 }
 
-fn add_boid_sprite(
+fn boid_example_sprite_system(
     commands: &mut Commands,
     query: Query<(Entity, &Boid), Without<Sprite>>,
     //
@@ -226,14 +236,14 @@ fn add_boid_sprite(
     }
 }
 
-pub fn example() {
+pub fn arcade_example() {
     App::build()
         .init_resource::<Flocks>()
         .add_plugins(DefaultPlugins)
         .add_startup_system(example_setup.system())
-        .add_system(update_flocks.system())
-        .add_system(update_boid.system())
-        .add_system(add_boid_sprite.system())
+        .add_system(flocks_update_system.system())
+        .add_system(boid_arcade_update_system.system())
+        .add_system(boid_example_sprite_system.system())
         .run();
 }
 
@@ -257,4 +267,66 @@ fn example_setup(cmds: &mut Commands) {
 
     spawn_flocks(cmds, &flocks);
     cmds.insert_resource(flocks);
+}
+
+fn rapier_config(mut config: ResMut<RapierConfiguration>) {
+    config.gravity.y = 0.0;
+}
+
+///////////////////////
+
+pub fn rapier_example() {
+    App::build()
+        .init_resource::<Flocks>()
+        .add_plugins(DefaultPlugins)
+        .add_plugin(RapierPhysicsPlugin)
+        .add_startup_system(example_setup.system())
+        .add_startup_system(rapier_config.system())
+        .add_system(flocks_update_system.system())
+        .add_system(boid_rapier_update_system.system())
+        .add_system(boid_example_sprite_system.system())
+        .add_system(boid_rapier_body_system.system())
+        .run();
+}
+
+pub fn boid_rapier_update_system(
+    mut bodies: ResMut<RigidBodySet>,
+    mut query: Query<(&Boid, &RigidBodyHandleComponent)>,
+) {
+    for (boid, body_component) in query.iter_mut() {
+        for body in bodies.get_mut(body_component.handle()) {
+            let angel = boid.velocity.y.atan2(boid.velocity.x);
+            let pos = body.position();
+            let pos = Isometry::new(pos.translation.vector, angel);
+            body.set_position(pos, true);
+
+            let speed = body.linvel().magnitude_squared();
+            let max_speed = boid.max_speed * boid.max_speed;
+            body.linear_damping = 1.25 * speed / max_speed;
+
+            body.apply_impulse(boid.velocity.into_vector2(), true);
+        }
+    }
+}
+
+pub fn boid_rapier_body_system(
+    commands: &mut Commands,
+    query: Query<
+        (Entity, &Transform, &Boid),
+        (Without<RigidBodyBuilder>, Without<RigidBodyHandleComponent>),
+    >,
+) {
+    for (entity, transform, _) in query.iter() {
+        commands.insert(
+            entity,
+            (
+                RigidBodyBuilder::new_dynamic()
+                    .translation(transform.translation.x, transform.translation.y)
+                    .rotation(transform.rotation.z)
+                    .lock_rotations()
+                    .linear_damping(1.0),
+                ColliderBuilder::ball(4.0).restitution(1.0),
+            ),
+        );
+    }
 }
