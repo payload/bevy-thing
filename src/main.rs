@@ -32,6 +32,7 @@ fn main() {
             "level3" => level3(),
             "level4" => level4::app().run(),
             "steering" => systems::steering::example(),
+            "context-map" => systems::context_map::example(),
             _ => (),
         }
     }
