@@ -129,7 +129,10 @@ fn flocks_update_system(
             );
             let to_center = -*boid_pos * (*boid_pos / 2000.0).length_squared();
 
-            let weighted: Vec2 = 0.5 * alignment + cohesion + 0.9 * separation + to_center;
+            let weighted: Vec2 = flocks[boid.flock_id].alignment_strength * alignment
+                + flocks[boid.flock_id].cohesion_strength * cohesion
+                + flocks[boid.flock_id].separation_strength * separation
+                + to_center;
             let scaled = weighted * boid.max_speed * time.delta_seconds();
             let mut new_velocity = boid.velocity + scaled;
 
