@@ -34,6 +34,7 @@ fn main() {
             "steering-arcade" => systems::steering::arcade_example(),
             "steering-rapier" => systems::steering::rapier_example(),
             "context-map" => systems::context_map::example(),
+            "jabber" => systems::jabber::example(),
             _ => (),
         }
     }
