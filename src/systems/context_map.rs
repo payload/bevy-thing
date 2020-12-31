@@ -9,7 +9,7 @@ use std::{f32::consts::PI, fmt::Display};
 
 use crate::bevy_rapier_utils::na;
 
-type Vector8 = na::VectorN<f32, na::base::U8>;
+pub type Vector8 = na::VectorN<f32, na::base::U8>;
 
 #[derive(Default, Debug, Clone)]
 pub struct ContextMap {
@@ -152,6 +152,7 @@ pub fn context_map_gizmo_system(
     cmds: &mut Commands,
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
+    // TODO use filter Changed<ContextMap>, at the time of writing it did not work
     mut query: Query<(Entity, Mut<Gizmo>, &ContextMap)>,
 ) {
     for (entity, mut gizmo, context_map) in query.iter_mut() {

@@ -23,6 +23,7 @@ fn main() {
             "level2" => level2::app().run(),
             "level3" => level3::app().run(),
             "level4" => level4::app().run(),
+            "level5" => level5::app().run(),
             "steering-arcade" => systems::steering::arcade_example(),
             "steering-rapier" => systems::steering::rapier_example(),
             "context-map" => systems::context_map::example(),
