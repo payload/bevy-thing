@@ -67,21 +67,95 @@ pub fn print_jabbering_system(
     }
 }
 
+pub struct RenderedJabbering(Entity);
+pub struct RenderedJabberingRoot;
+
+pub fn rendered_jabbering_system(
+    font: Res<Handle<Font>>,
+    commands: &mut Commands,
+    query: Query<
+        (
+            Entity,
+            &Jabbering,
+            Option<&String>,
+            Option<&RenderedJabbering>,
+        ),
+        Changed<Jabbering>,
+    >,
+    mut text_query: Query<Mut<Text>>,
+    root_query: Query<Entity, With<RenderedJabberingRoot>>,
+) {
+    let style = TextStyle {
+        font_size: 30.0,
+        color: Color::BLACK,
+        alignment: TextAlignment {
+            vertical: VerticalAlign::Top,
+            horizontal: HorizontalAlign::Left,
+        },
+    };
+
+    let root = root_query.iter().next();
+    if root.is_none() {
+        return;
+    }
+    let root = root.unwrap();
+
+    for (entity, jabbering, name, rendered) in query.iter() {
+        for line in jabbering.get_line() {
+            let mut text_value = if let Some(name) = name {
+                format!("{}: ", name)
+            } else {
+                format!("Entity {}: ", entity.id())
+            };
+            text_value.push_str(&line);
+
+            if let Some(child) = rendered {
+                if let Ok(mut text_comp) = text_query.get_mut(child.0) {
+                    text_comp.value = text_value;
+                }
+            } else {
+                let child = commands
+                    .spawn(TextBundle {
+                        style: Style {
+                            size: Size::new(Val::Auto, Val::Percent(50.0)),
+                            ..Default::default()
+                        },
+                        text: Text {
+                            value: text_value,
+                            font: font.clone(),
+                            style: style.clone(),
+                        },
+                        ..Default::default()
+                    })
+                    .current_entity()
+                    .unwrap();
+
+                commands.insert_one(entity, RenderedJabbering(child));
+                commands.push_children(root, &[child]);
+            }
+        }
+    }
+}
+
 pub fn example() {
     App::build()
         .add_plugins(DefaultPlugins)
         .add_startup_system(example_setup.system())
         .add_system(jabbering_system.system())
-        .add_system(print_jabbering_system.system())
+        .add_system_to_stage(stage::POST_UPDATE, print_jabbering_system.system())
+        .add_system_to_stage(stage::UPDATE, rendered_jabbering_system.system())
         .run();
 }
 
-fn example_setup(cmds: &mut Commands) {
-    let mut timer1 = Timer::from_seconds(4.0, true);
-    let timer2 = timer1.clone();
-    timer1.set_elapsed(2.0);
+fn example_setup(commands: &mut Commands, asset_server: Res<AssetServer>) {
+    commands.spawn(CameraUiBundle::default());
+    commands.insert_resource::<Handle<Font>>(asset_server.load("FiraSans-Bold.ttf"));
 
-    cmds.spawn((
+    let mut timer1 = Timer::from_seconds(3.0, true);
+    let timer2 = timer1.clone();
+    timer1.set_elapsed(1.5);
+
+    commands.spawn((
         "Chef".to_string(),
         Jabbering {
             line: None,
@@ -90,7 +164,7 @@ fn example_setup(cmds: &mut Commands) {
         JabberingTimer(timer1),
     ));
 
-    cmds.spawn((
+    commands.spawn((
         "Bob".to_string(),
         Jabbering {
             line: None,
@@ -98,4 +172,15 @@ fn example_setup(cmds: &mut Commands) {
         },
         JabberingTimer(timer2),
     ));
+
+    commands
+        .spawn(NodeBundle {
+            style: Style {
+                size: Size::new(Val::Percent(100.0), Val::Percent(10.0)),
+                flex_direction: FlexDirection::ColumnReverse,
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .with(RenderedJabberingRoot);
 }

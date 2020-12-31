@@ -18,7 +18,15 @@ use std::cmp::Ordering;
 use bevy::{ecs::DynamicBundle, prelude::*};
 use rand::prelude::*;
 
-use crate::bitpack::Bitpack;
+use crate::bitpack::{Bitpack, BitpackPlugin};
+
+pub fn app() -> AppBuilder {
+    let mut app = App::build();
+    app.add_plugins(DefaultPlugins)
+        .add_plugin(Level1Plugin)
+        .add_plugin(BitpackPlugin);
+    app
+}
 
 pub struct Level1Plugin;
 

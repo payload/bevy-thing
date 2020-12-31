@@ -23,7 +23,7 @@ use crate::{
     components::*,
     entities::player::*,
     interactions::*,
-    level2::{self, TileBundle, TileMap, TileMapLoader, TileMapSpawnEvent},
+    levels::level2::{self, TileBundle, TileMap, TileMapLoader, TileMapSpawnEvent},
     rapier_debug_render::rapier_debug_render,
     utils::*,
 };

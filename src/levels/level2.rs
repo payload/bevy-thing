@@ -14,10 +14,17 @@ use bevy::{
 };
 use serde::Deserialize;
 
-use crate::bitpack::Bitpack;
+use crate::bitpack::{Bitpack, BitpackPlugin};
 
-use crate::level1;
-use level1::*;
+use crate::levels::level1::{self, *};
+
+pub fn app() -> AppBuilder {
+    let mut app = App::build();
+    app.add_plugins(DefaultPlugins)
+        .add_plugin(BitpackPlugin)
+        .add_plugin(Level2Plugin);
+    app
+}
 
 pub struct Level2Plugin;
 

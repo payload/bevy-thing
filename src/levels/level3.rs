@@ -25,12 +25,20 @@ use level2::{TileBundle, TileMap, TileMapLoader, TileMapSpawnEvent, TileMapSpawn
 
 use crate::{
     bevy_rapier_utils::IntoVector2,
-    bitpack::Bitpack,
+    bitpack::{Bitpack, BitpackPlugin},
     bundle_utils::{sprite_bundle, static_tile_physics_bundle},
     commands_ext::CommandsExt,
-    level1::{self, RandomVec},
-    level2,
+    levels::level1::{self, RandomVec},
+    levels::level2,
 };
+
+pub fn app() -> AppBuilder {
+    let mut app = App::build();
+    app.add_plugins(DefaultPlugins)
+        .add_plugin(BitpackPlugin)
+        .add_plugin(Level3Plugin);
+    app
+}
 
 pub struct Level3Plugin;
 

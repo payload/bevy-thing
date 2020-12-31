@@ -8,28 +8,20 @@ mod commands_ext;
 mod components;
 mod entities;
 mod interactions;
+mod levels;
 mod map_asset;
 mod rapier_debug_render;
 mod systems;
 mod utils;
 
-mod level1;
-mod level2;
-mod level3;
-mod level4;
-
-use bevy::prelude::*;
-use bitpack::BitpackPlugin;
-use level1::Level1Plugin;
-use level2::Level2Plugin;
-use level3::Level3Plugin;
+use levels::*;
 
 fn main() {
     if let Some(command) = std::env::args().nth(1) {
         match command.as_str() {
-            "level1" => level1(),
-            "level2" => level2(),
-            "level3" => level3(),
+            "level1" => level1::app().run(),
+            "level2" => level2::app().run(),
+            "level3" => level3::app().run(),
             "level4" => level4::app().run(),
             "steering-arcade" => systems::steering::arcade_example(),
             "steering-rapier" => systems::steering::rapier_example(),
@@ -38,28 +30,4 @@ fn main() {
             _ => (),
         }
     }
-}
-
-fn level1() {
-    App::build()
-        .add_plugins(DefaultPlugins)
-        .add_plugin(BitpackPlugin)
-        .add_plugin(Level1Plugin)
-        .run();
-}
-
-fn level2() {
-    App::build()
-        .add_plugins(DefaultPlugins)
-        .add_plugin(BitpackPlugin)
-        .add_plugin(Level2Plugin)
-        .run();
-}
-
-fn level3() {
-    App::build()
-        .add_plugins(DefaultPlugins)
-        .add_plugin(BitpackPlugin)
-        .add_plugin(Level3Plugin)
-        .run();
 }
