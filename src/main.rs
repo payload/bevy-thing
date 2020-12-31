@@ -27,6 +27,7 @@ fn main() {
             "steering-rapier" => systems::steering::rapier_example(),
             "context-map" => systems::context_map::example(),
             "jabber" => systems::jabber::example(),
+            "texture-atlas-utils" => systems::texture_atlas_utils::example(),
             _ => (),
         }
     }
