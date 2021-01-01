@@ -54,11 +54,6 @@ impl ContextMap {
         }
     }
 
-    pub fn add_interest(&mut self, vec: Vec2, length_func: impl FnOnce(f32) -> f32) {
-        let index = self.vec2_to_index(vec);
-        self.weights[index] = length_func(vec.length_squared());
-    }
-
     fn max_index(&self) -> usize {
         let res = self.weights.len();
         let mut index = 0;
@@ -78,10 +73,6 @@ impl ContextMap {
 
     pub fn max_as_vec2(&self) -> Vec2 {
         self.index_to_vec2(self.max_index())
-    }
-
-    pub fn max_as_norm_vec2(&self) -> Vec2 {
-        self.index_to_norm_vec2(self.max_index())
     }
 
     pub fn index_to_norm_vec2(&self, index: usize) -> Vec2 {
@@ -201,22 +192,6 @@ impl ContextMapAI {
         Self {
             interests: ContextMap::new(ContextMapV::new_random()),
             dangers: ContextMap::new(ContextMapV::new_random()),
-        }
-    }
-
-    pub fn add(&mut self, vec: Vec2, map: impl Fn(f32, f32) -> f32) {
-        let res = self.interests.weights.len();
-
-        for i in 0..res {
-            let slot = self.interests.index_to_norm_vec2(i);
-            let w = vec.dot(slot);
-            let v = map(vec.length_squared(), w);
-
-            if v > 0.0 {
-                self.interests.weights[i] += v;
-            } else {
-                self.dangers.weights[i] -= v;
-            }
         }
     }
 }

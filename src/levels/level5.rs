@@ -24,19 +24,12 @@ pub fn app() -> AppBuilder {
     app
 }
 
-type StateResources<'a> = (Res<'a, Assets<TextureAtlas>>, Res<'a, Assets<Texture>>);
-struct State {
-    micro_roguelike_tex: Handle<Texture>,
-    micro_roguelike_tex_atlas: Handle<TextureAtlas>,
-}
-
 fn setup(
     commands: &mut Commands,
     asset_server: Res<AssetServer>,
     mut rapier: ResMut<RapierConfiguration>,
     mut clear_color: ResMut<ClearColor>,
     mut atlases: ResMut<Assets<TextureAtlas>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     rapier.gravity.y = 0.0;
     clear_color.0 = Color::rgb(0.133, 0.137, 0.137);
@@ -114,11 +107,6 @@ fn setup(
             sprite: TextureAtlasSprite::new(51),
             ..Default::default()
         });
-
-    commands.insert_resource(State {
-        micro_roguelike_tex,
-        micro_roguelike_tex_atlas,
-    });
 }
 
 enum Faction {
@@ -126,8 +114,7 @@ enum Faction {
     AggresiveMob,
 }
 
-fn update_proximity_context_ai(
-    time: Res<Time>,
+fn _update_proximity_context_ai(
     comp_query: Query<(Option<&Transform>, Option<&Faction>)>,
     mut ai_query: Query<(Entity, &ProximitySet, Mut<ContextMapAI>)>,
 ) {
@@ -205,7 +192,7 @@ fn update_context_ai_factions(
 fn movement_system(time: Res<Time>, mut this_query: Query<(Mut<Transform>, &ContextMapAI)>) {
     for (mut trans, ai) in this_query.iter_mut() {
         let interest = ai.interests.max_as_vec2();
-        let danger = ai.dangers.max_as_vec2();
+        let _danger = ai.dangers.max_as_vec2();
 
         trans.translation += (interest * time.delta_seconds() * 50.0).extend(0.0);
     }
