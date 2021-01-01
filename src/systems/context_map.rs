@@ -2,7 +2,7 @@
 /// inspiration by Game Endeavor https://www.youtube.com/watch?v=6BrZryMz-ac
 ///
 /// Paper by Andrew Frey "Context Steering" http://www.gameaipro.com/GameAIPro2/GameAIPro2_Chapter18_Context_Steering_Behavior-Driven_Steering_at_the_Macro_Scale.pdf
-use bevy::prelude::*;
+use bevy::{prelude::*, render::camera::Camera};
 use bevy_prototype_lyon::prelude::*;
 use float_eq::assert_float_eq;
 use std::{f32::consts::PI, fmt::Display};
@@ -92,15 +92,6 @@ impl ContextMap {
         let mag = self.weights[index];
         self.index_to_norm_vec2(index) * (add + mul * mag)
     }
-}
-
-pub fn example() {
-    App::build()
-        .add_plugins(DefaultPlugins)
-        .add_startup_system(example_setup.system())
-        .add_system(context_map_ai_gizmo_system.system())
-        .add_system(example_update.system())
-        .run();
 }
 
 pub fn spawn_context_map_gizmo(
@@ -236,11 +227,10 @@ pub fn context_map_ai_gizmo_system(
 ) {
     for (entity, mut gizmo, ai) in query.iter_mut() {
         for child in gizmo.gizmo_entity {
-            cmds.despawn(child);
+            cmds.despawn_recursive(child);
         }
 
-        let child =
-            spawn_context_map_ai_gizmo(&ai, &gizmo, cmds, &mut materials, &mut meshes);
+        let child = spawn_context_map_ai_gizmo(&ai, &gizmo, cmds, &mut materials, &mut meshes);
 
         cmds.push_children(entity, &[child]);
         gizmo.gizmo_entity = Some(child);
@@ -263,6 +253,40 @@ pub fn context_map_gizmo_system(
 
         cmds.push_children(entity, &[child]);
         gizmo.gizmo_entity = Some(child);
+    }
+}
+
+pub fn example() {
+    App::build()
+        .add_plugins(DefaultPlugins)
+        .add_startup_system(example_setup.system())
+        .add_system(context_map_ai_gizmo_system.system())
+        .add_system(example_update.system())
+        .add_system(update_ai_mouse.system())
+        .run();
+}
+
+fn update_ai_mouse(
+    mut this_query: Query<(&Transform, Mut<ContextMapAI>)>,
+    camera_query: Query<&Transform, With<Camera>>,
+    windows: Res<Windows>,
+) {
+    for window in windows.get_primary() {
+        for cursor in window.cursor_position() {
+            let camera_transform = camera_query.iter().next().unwrap();
+            let size = Vec2::new(window.width(), window.height());
+            let p = cursor - size * 0.5;
+            let pos_wld = camera_transform.compute_matrix() * p.extend(0.0).extend(1.0);
+            let cursor = pos_wld.truncate().truncate();
+
+            for (trans, mut ai) in this_query.iter_mut() {
+                ai.interests.weights *= 0.0;
+                ai.dangers.weights *= 0.0;
+
+                ai.interests
+                    .add((trans.translation.truncate() - cursor).normalize());
+            }
+        }
     }
 }
 
