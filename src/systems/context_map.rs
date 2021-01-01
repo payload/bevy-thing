@@ -51,6 +51,10 @@ impl ContextMap {
         Self::angle_to_index(vec.y.atan2(vec.x))
     }
 
+    pub fn add(&mut self, vec: Vec2) {
+        self.weights[Self::vec2_to_index(vec)] = vec.length();
+    }
+
     pub fn add_interest(&mut self, vec: Vec2, length_func: impl FnOnce(f32) -> f32) {
         self.weights[Self::vec2_to_index(vec)] = length_func(vec.length_squared());
     }
@@ -130,6 +134,21 @@ pub fn spawn_context_map_gizmo(
 }
 
 #[derive(Default, Debug)]
+pub struct ContextMapAI {
+    pub interests: ContextMap,
+    pub dangers: ContextMap,
+}
+
+impl ContextMapAI {
+    pub fn new_random() -> Self {
+        Self {
+            interests: ContextMap::new(Vector8::new_random()),
+            dangers: ContextMap::new(Vector8::new_random()),
+        }
+    }
+}
+
+#[derive(Default, Debug)]
 pub struct Gizmo {
     pub color: Color,
     pub radius: f32,
@@ -145,6 +164,27 @@ impl Gizmo {
             multiply: radius,
             gizmo_entity: None,
         }
+    }
+}
+
+pub fn context_map_ai_gizmo_system(
+    cmds: &mut Commands,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    // TODO use filter Changed<ContextMap>, at the time of writing it did not work
+    mut query: Query<(Entity, Mut<Gizmo>, &ContextMapAI)>,
+) {
+    for (entity, mut gizmo, ai) in query.iter_mut() {
+        for child in gizmo.gizmo_entity {
+            cmds.despawn(child);
+        }
+
+        let context_map = ContextMap::new(ai.interests.weights - ai.dangers.weights);
+        let child =
+            spawn_context_map_gizmo(&context_map, &gizmo, cmds, &mut materials, &mut meshes);
+
+        cmds.push_children(entity, &[child]);
+        gizmo.gizmo_entity = Some(child);
     }
 }
 

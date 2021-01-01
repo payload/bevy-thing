@@ -16,6 +16,7 @@ anyhow = "*"
 serde = "*"
 bevy_prototype_lyon = { git = "https://github.com/Nilirad/bevy_prototype_lyon.git", branch = "master" }
 float_eq = "0.5"
+makima_spline = "1"
 
 [patch.crates-io]
 bevy = { git = "https://github.com/bevyengine/bevy.git", branch = "master" }
