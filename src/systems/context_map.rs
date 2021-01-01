@@ -98,7 +98,7 @@ pub fn example() {
     App::build()
         .add_plugins(DefaultPlugins)
         .add_startup_system(example_setup.system())
-        .add_system(context_map_gizmo_system.system())
+        .add_system(context_map_ai_gizmo_system.system())
         .add_system(example_update.system())
         .run();
 }
@@ -131,6 +131,66 @@ pub fn spawn_context_map_gizmo(
     ))
     .current_entity()
     .unwrap()
+}
+
+pub fn spawn_context_map_ai_gizmo(
+    ai: &ContextMapAI,
+    gizmo: &Gizmo,
+    cmds: &mut Commands,
+    materials: &mut ResMut<Assets<ColorMaterial>>,
+    meshes: &mut ResMut<Assets<Mesh>>,
+) -> Entity {
+    let pointv = |v: Vec2| point(v.x, v.y);
+    let map_point = |context_map: &ContextMap, i, r| {
+        pointv(context_map.index_to_vec2_muladd(i, r, gizmo.multiply))
+    };
+    let map_point2 = |context_map: &ContextMap, i, r: f32| {
+        pointv(context_map.index_to_vec2_muladd(i, -r, gizmo.multiply))
+    };
+    let mut polyline = |color, points| {
+        primitive(
+            color,
+            meshes,
+            ShapeType::Polyline {
+                points,
+                closed: true,
+            },
+            TessellationMode::Stroke(&Default::default()),
+            Vec3::zero(),
+        )
+    };
+
+    let mut interests = Vec::with_capacity(8 * 3);
+    for i in 0..8 {
+        interests.push(map_point(&ai.interests, i, 0.0));
+        interests.push(map_point(&ai.interests, i, gizmo.radius));
+        interests.push(map_point(&ai.interests, i, 0.0));
+    }
+
+    let mut dangers = Vec::with_capacity(8 * 3);
+    for i in 0..8 {
+        dangers.push(map_point2(&ai.dangers, i, 0.0));
+        dangers.push(map_point2(&ai.dangers, i, gizmo.radius));
+        dangers.push(map_point2(&ai.dangers, i, 0.0));
+    }
+
+    let mut ring = Vec::with_capacity(8);
+    for i in 0..8 {
+        ring.push(map_point(&ai.interests, i, 0.0));
+    }
+
+    let green = materials.add(Color::LIME_GREEN.into());
+    let red = materials.add(Color::RED.into());
+    let white = materials.add(Color::WHITE.into());
+
+    cmds.spawn((Transform::default(), GlobalTransform::default()))
+        .with_children(|cmds| {
+            cmds.spawn(polyline(green, interests))
+                .spawn(polyline(red, dangers))
+                .spawn(polyline(white, ring));
+        })
+        .current_entity()
+        .unwrap()
 }
 
 #[derive(Default, Debug)]
@@ -179,9 +239,8 @@ pub fn context_map_ai_gizmo_system(
             cmds.despawn(child);
         }
 
-        let context_map = ContextMap::new(ai.interests.weights - ai.dangers.weights);
         let child =
-            spawn_context_map_gizmo(&context_map, &gizmo, cmds, &mut materials, &mut meshes);
+            spawn_context_map_ai_gizmo(&ai, &gizmo, cmds, &mut materials, &mut meshes);
 
         cmds.push_children(entity, &[child]);
         gizmo.gizmo_entity = Some(child);
@@ -239,7 +298,7 @@ fn example_setup(
     cmds.spawn((
         Transform::from_translation(Vec3::new(-100.0, -100.0, 0.0)),
         GlobalTransform::default(),
-        context_map,
+        ContextMapAI::new_random(),
         Gizmo::new(Color::ORANGE_RED, 30.0),
     ));
 }
