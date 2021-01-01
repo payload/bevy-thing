@@ -9,11 +9,11 @@ use std::{f32::consts::PI, fmt::Display};
 
 use crate::bevy_rapier_utils::na;
 
-pub type Vector8 = na::VectorN<f32, na::base::U8>;
+pub type ContextMapV = na::VectorN<f32, na::base::U12>;
 
 #[derive(Default, Debug, Clone)]
 pub struct ContextMap {
-    pub weights: Vector8,
+    pub weights: ContextMapV,
 }
 
 impl Display for ContextMap {
@@ -22,53 +22,50 @@ impl Display for ContextMap {
     }
 }
 
-const ANGLES: [f32; 8] = [
-    0.0 / 4.0 * PI,
-    1.0 / 4.0 * PI,
-    2.0 / 4.0 * PI,
-    3.0 / 4.0 * PI,
-    4.0 / 4.0 * PI,
-    5.0 / 4.0 * PI,
-    6.0 / 4.0 * PI,
-    7.0 / 4.0 * PI,
-];
-
 impl ContextMap {
-    pub fn new(weights: Vector8) -> Self {
+    pub fn new(weights: ContextMapV) -> Self {
         Self { weights }
     }
 
-    fn angle_to_index(angle: f32) -> usize {
-        let i = 4 + (angle * 4.0 / PI).round() as isize;
-        if 0 <= i && i <= 7 {
+    fn angle_to_index(&self, angle: f32) -> usize {
+        let res = self.weights.len() as isize;
+        let i = res / 2 + (angle * 0.5 * res as f32 / PI).round() as isize;
+        if 0 <= i && i < res {
             i as usize
         } else {
-            ((if i < 0 { i + 8 } else { i }) % 8) as usize
+            ((if i < 0 { i + res } else { i }) % res) as usize
         }
     }
 
-    fn vec2_to_index(vec: Vec2) -> usize {
-        Self::angle_to_index(vec.y.atan2(vec.x))
+    fn vec2_to_index(&self, vec: Vec2) -> usize {
+        self.angle_to_index(vec.y.atan2(vec.x))
     }
 
     pub fn add(&mut self, vec: Vec2) {
-        self.weights[Self::vec2_to_index(vec)] = vec.length();
+        let index = self.vec2_to_index(vec);
+        self.weights[index] = vec.length();
     }
 
     pub fn add_interest(&mut self, vec: Vec2, length_func: impl FnOnce(f32) -> f32) {
-        self.weights[Self::vec2_to_index(vec)] = length_func(vec.length_squared());
+        let index = self.vec2_to_index(vec);
+        self.weights[index] = length_func(vec.length_squared());
     }
 
     fn max_index(&self) -> usize {
+        let res = self.weights.len();
         let mut index = 0;
         let mut mag = 0.0;
-        for i in 0..8 {
+        for i in 0..res {
             if self.weights[i] >= mag {
                 mag = self.weights[i];
                 index = i;
             }
         }
         index
+    }
+
+    fn get_angle(&self, index: usize) -> f32 {
+        index as f32 * 2.0 * PI / self.weights.len() as f32
     }
 
     pub fn max_as_vec2(&self) -> Vec2 {
@@ -80,7 +77,7 @@ impl ContextMap {
     }
 
     pub fn index_to_norm_vec2(&self, index: usize) -> Vec2 {
-        let angle = ANGLES[index];
+        let angle = self.get_angle(index);
         Vec2::new(angle.cos(), angle.sin())
     }
 
@@ -101,10 +98,11 @@ pub fn spawn_context_map_gizmo(
     materials: &mut ResMut<Assets<ColorMaterial>>,
     meshes: &mut ResMut<Assets<Mesh>>,
 ) -> Entity {
+    let res = context_map.weights.len();
     let pointv = |v: Vec2| point(v.x, v.y);
     let map_point = |i, r| pointv(context_map.index_to_vec2_muladd(i, r, gizmo.multiply));
-    let mut points = Vec::with_capacity(8 * 3);
-    for i in 0..8 {
+    let mut points = Vec::with_capacity(res * 3);
+    for i in 0..res {
         points.push(map_point(i, 0.0));
         points.push(map_point(i, gizmo.radius));
         points.push(map_point(i, 0.0));
@@ -131,6 +129,8 @@ pub fn spawn_context_map_ai_gizmo(
     materials: &mut ResMut<Assets<ColorMaterial>>,
     meshes: &mut ResMut<Assets<Mesh>>,
 ) -> Entity {
+    let interests_len = ai.interests.weights.len();
+    let dangers_len = ai.dangers.weights.len();
     let pointv = |v: Vec2| point(v.x, v.y);
     let map_point = |context_map: &ContextMap, i, r| {
         pointv(context_map.index_to_vec2_muladd(i, r, gizmo.multiply))
@@ -151,22 +151,22 @@ pub fn spawn_context_map_ai_gizmo(
         )
     };
 
-    let mut interests = Vec::with_capacity(8 * 3);
-    for i in 0..8 {
+    let mut interests = Vec::with_capacity(interests_len * 3);
+    for i in 0..interests_len {
         interests.push(map_point(&ai.interests, i, 0.0));
         interests.push(map_point(&ai.interests, i, gizmo.radius));
         interests.push(map_point(&ai.interests, i, 0.0));
     }
 
-    let mut dangers = Vec::with_capacity(8 * 3);
-    for i in 0..8 {
+    let mut dangers = Vec::with_capacity(dangers_len * 3);
+    for i in 0..dangers_len {
         dangers.push(map_point2(&ai.dangers, i, 0.0));
         dangers.push(map_point2(&ai.dangers, i, gizmo.radius));
         dangers.push(map_point2(&ai.dangers, i, 0.0));
     }
 
-    let mut ring = Vec::with_capacity(8);
-    for i in 0..8 {
+    let mut ring = Vec::with_capacity(interests_len);
+    for i in 0..interests_len {
         ring.push(map_point(&ai.interests, i, 0.0));
     }
 
@@ -193,8 +193,8 @@ pub struct ContextMapAI {
 impl ContextMapAI {
     pub fn new_random() -> Self {
         Self {
-            interests: ContextMap::new(Vector8::new_random()),
-            dangers: ContextMap::new(Vector8::new_random()),
+            interests: ContextMap::new(ContextMapV::new_random()),
+            dangers: ContextMap::new(ContextMapV::new_random()),
         }
     }
 }
@@ -291,36 +291,35 @@ fn update_ai_mouse(
 }
 
 fn example_setup(
-    cmds: &mut Commands,
+    commands: &mut Commands,
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
-    cmds.spawn({
+    commands.spawn({
         let mut bundle = Camera2dBundle::default();
         bundle.transform.scale = Vec3::new(0.5, 0.5, 1.0);
         bundle
     });
 
-    let mut c = ContextMap::new(Vector8::zeros());
-    c.add_interest(Vec2::new(2.0, 0.1), |len| len * 2.0);
-    c.add_interest(Vec2::new(-3.0, -1.0), |len| len * 2.0);
-    c.add_interest(Vec2::new(0.0, 2.0), |len| -len * 2.0);
-
-    assert_float_eq!(c.max_as_norm_vec2().x, 1.0, abs <= 0.0001);
-    assert_float_eq!(c.max_as_norm_vec2().y, 0.0, abs <= 0.0001);
-    assert!(c.max_as_vec2().length() > 1.0);
-
-    let context_map = ContextMap::new(Vector8::new_random() - Vector8::new_random());
-    spawn_context_map_gizmo(
-        &context_map,
+    let gizmo_parent = commands
+        .spawn((
+            Transform::from_translation(Vec3::new(-100.0, -100.0, 0.0)),
+            GlobalTransform::default(),
+        ))
+        .current_entity()
+        .unwrap();
+    let gizmo = spawn_context_map_ai_gizmo(
+        &ContextMapAI::new_random(),
         &Gizmo::new(Color::WHITE, 20.0),
-        cmds,
+        commands,
         &mut materials,
         &mut meshes,
     );
 
-    cmds.spawn((
-        Transform::from_translation(Vec3::new(-100.0, -100.0, 0.0)),
+    commands.push_children(gizmo_parent, &[gizmo]);
+
+    commands.spawn((
+        Transform::default(),
         GlobalTransform::default(),
         ContextMapAI::new_random(),
         Gizmo::new(Color::ORANGE_RED, 30.0),
@@ -329,6 +328,6 @@ fn example_setup(
 
 fn example_update(mut query: Query<Mut<ContextMap>>) {
     for mut context_map in query.iter_mut() {
-        context_map.weights = Vector8::new_random() - Vector8::new_random();
+        context_map.weights = ContextMapV::new_random() - ContextMapV::new_random();
     }
 }
