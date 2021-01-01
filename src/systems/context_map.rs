@@ -4,12 +4,11 @@
 /// Paper by Andrew Frey "Context Steering" http://www.gameaipro.com/GameAIPro2/GameAIPro2_Chapter18_Context_Steering_Behavior-Driven_Steering_at_the_Macro_Scale.pdf
 use bevy::{prelude::*, render::camera::Camera};
 use bevy_prototype_lyon::prelude::*;
-use float_eq::assert_float_eq;
 use std::{f32::consts::PI, fmt::Display};
 
 use crate::bevy_rapier_utils::na;
 
-pub type ContextMapV = na::VectorN<f32, na::base::U12>;
+pub type ContextMapV = na::VectorN<f32, na::base::U16>;
 
 #[derive(Default, Debug, Clone)]
 pub struct ContextMap {
@@ -44,6 +43,15 @@ impl ContextMap {
     pub fn add(&mut self, vec: Vec2) {
         let index = self.vec2_to_index(vec);
         self.weights[index] = vec.length();
+    }
+
+    pub fn add_map(&mut self, vec: Vec2, map: impl Fn(f32) -> f32) {
+        let res = self.weights.len();
+        for i in 0..res {
+            let slot = self.index_to_norm_vec2(i);
+            let w = vec.dot(slot);
+            self.weights[i] += map(w);
+        }
     }
 
     pub fn add_interest(&mut self, vec: Vec2, length_func: impl FnOnce(f32) -> f32) {
@@ -132,12 +140,7 @@ pub fn spawn_context_map_ai_gizmo(
     let interests_len = ai.interests.weights.len();
     let dangers_len = ai.dangers.weights.len();
     let pointv = |v: Vec2| point(v.x, v.y);
-    let map_point = |context_map: &ContextMap, i, r| {
-        pointv(context_map.index_to_vec2_muladd(i, r, gizmo.multiply))
-    };
-    let map_point2 = |context_map: &ContextMap, i, r: f32| {
-        pointv(context_map.index_to_vec2_muladd(i, -r, gizmo.multiply))
-    };
+
     let mut polyline = |color, points| {
         primitive(
             color,
@@ -152,22 +155,25 @@ pub fn spawn_context_map_ai_gizmo(
     };
 
     let mut interests = Vec::with_capacity(interests_len * 3);
-    for i in 0..interests_len {
-        interests.push(map_point(&ai.interests, i, 0.0));
-        interests.push(map_point(&ai.interests, i, gizmo.radius));
-        interests.push(map_point(&ai.interests, i, 0.0));
+    for (i, &w) in ai.interests.weights.iter().enumerate() {
+        let vec = ai.interests.index_to_norm_vec2(i);
+        interests.push(pointv(vec * 0.0));
+        interests.push(pointv(vec * 0.0 + vec * w * gizmo.multiply));
+        interests.push(pointv(vec * 0.0));
     }
 
     let mut dangers = Vec::with_capacity(dangers_len * 3);
-    for i in 0..dangers_len {
-        dangers.push(map_point2(&ai.dangers, i, 0.0));
-        dangers.push(map_point2(&ai.dangers, i, gizmo.radius));
-        dangers.push(map_point2(&ai.dangers, i, 0.0));
+    for (i, &w) in ai.dangers.weights.iter().enumerate() {
+        let vec = ai.dangers.index_to_norm_vec2(i);
+        dangers.push(pointv(vec * 0.0));
+        dangers.push(pointv(vec * 0.0 + vec * w * gizmo.multiply));
+        dangers.push(pointv(vec * 0.0));
     }
 
     let mut ring = Vec::with_capacity(interests_len);
     for i in 0..interests_len {
-        ring.push(map_point(&ai.interests, i, 0.0));
+        let vec = ai.interests.index_to_norm_vec2(i);
+        ring.push(pointv(vec * gizmo.radius));
     }
 
     let green = materials.add(Color::LIME_GREEN.into());
@@ -195,6 +201,22 @@ impl ContextMapAI {
         Self {
             interests: ContextMap::new(ContextMapV::new_random()),
             dangers: ContextMap::new(ContextMapV::new_random()),
+        }
+    }
+
+    pub fn add(&mut self, vec: Vec2, map: impl Fn(f32, f32) -> f32) {
+        let res = self.interests.weights.len();
+
+        for i in 0..res {
+            let slot = self.interests.index_to_norm_vec2(i);
+            let w = vec.dot(slot);
+            let v = map(vec.length_squared(), w);
+
+            if v > 0.0 {
+                self.interests.weights[i] += v;
+            } else {
+                self.dangers.weights[i] -= v;
+            }
         }
     }
 }
@@ -283,8 +305,13 @@ fn update_ai_mouse(
                 ai.interests.weights *= 0.0;
                 ai.dangers.weights *= 0.0;
 
-                ai.interests
-                    .add((trans.translation.truncate() - cursor).normalize());
+                let vec = (cursor - trans.translation.truncate()).normalize();
+                ai.interests.add_map(vec, |w| 1.0 - (-0.7 - w).abs());
+                ai.dangers.add_map(vec, |w| 0.5 * w);
+                // ai.add(vec, |w| w);
+                // ai.add(vec, |w| (w + (1.0 - w * w)));
+                // ai.interests.add_map(vec, |w| 1.0 - w * w);
+                // ai.interests.add_map(vec, |w| (1.0 + w) / 2.0);
             }
         }
     }
@@ -310,7 +337,7 @@ fn example_setup(
         .unwrap();
     let gizmo = spawn_context_map_ai_gizmo(
         &ContextMapAI::new_random(),
-        &Gizmo::new(Color::WHITE, 20.0),
+        &Gizmo::new(Color::WHITE, 1.0),
         commands,
         &mut materials,
         &mut meshes,
@@ -322,7 +349,12 @@ fn example_setup(
         Transform::default(),
         GlobalTransform::default(),
         ContextMapAI::new_random(),
-        Gizmo::new(Color::ORANGE_RED, 30.0),
+        Gizmo {
+            color: Color::ORANGE_RED,
+            multiply: 30.0,
+            radius: 30.0,
+            gizmo_entity: None,
+        },
     ));
 }
 

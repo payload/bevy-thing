@@ -198,14 +198,11 @@ fn update_context_ai_factions(
         (NiceMob, NiceMob) => ai.interests.add(diff),
         (NiceMob, AggresiveMob) => ai.dangers.add(diff),
         (AggresiveMob, NiceMob) => ai.interests.add(diff),
-        (AggresiveMob, AggresiveMob) => {},
+        (AggresiveMob, AggresiveMob) => {}
     }
 }
 
-fn movement_system(
-    time: Res<Time>,
-    mut this_query: Query<(Mut<Transform>, &ContextMapAI)>,
-) {
+fn movement_system(time: Res<Time>, mut this_query: Query<(Mut<Transform>, &ContextMapAI)>) {
     for (mut trans, ai) in this_query.iter_mut() {
         let interest = ai.interests.max_as_vec2();
         let danger = ai.dangers.max_as_vec2();
