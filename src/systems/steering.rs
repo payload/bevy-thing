@@ -333,3 +333,47 @@ pub fn boid_rapier_body_system(
         );
     }
 }
+
+//
+
+pub struct Steer {
+    a: Vec2,
+    b: Vec2,
+    diff: Vec2,
+    distance: f32,
+    norm: Vec2,
+}
+
+impl Steer {
+    pub fn new(a: Vec2, b: Vec2) -> Self {
+        let diff: Vec2 = b - a;
+        let distance = diff.length();
+        let norm = diff.normalize();
+        Self { a, b, diff, distance, norm }
+    }
+
+    pub fn towards_if_between(&self, min: f32, max: f32) -> Vec2 {
+        if self.distance >= min && self.distance <= max {
+            self.norm
+        } else {
+            Vec2::zero()
+        }
+    }
+
+    pub fn separation(&self, safe_distance: f32) -> Vec2 {
+        let overlap = safe_distance - self.distance;
+        if overlap < 0.0 {
+            self.norm * overlap / safe_distance
+        } else {
+            Vec2::zero()
+        }
+    }
+
+    pub fn cohesion(&self, radius: f32) -> Vec2 {
+        if self.distance < radius {
+            self.diff / radius
+        } else {
+            self.norm
+        }
+    }
+}

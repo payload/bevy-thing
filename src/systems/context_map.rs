@@ -50,7 +50,7 @@ impl ContextMap {
         for i in 0..res {
             let slot = self.index_to_norm_vec2(i);
             let w = vec.dot(slot);
-            self.weights[i] += map(w);
+            self.weights[i] = self.weights[i].max(map(w));
         }
     }
 
@@ -114,7 +114,7 @@ pub fn spawn_context_map_gizmo(
             points,
             closed: true,
         },
-        TessellationMode::Stroke(&Default::default()),
+        TessellationMode::Stroke(&StrokeOptions::default()),
         Vec3::zero(),
     ))
     .current_entity()
