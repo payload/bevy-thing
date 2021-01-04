@@ -103,7 +103,7 @@ pub fn spawn_context_map_gizmo(
     let mut points = Vec::with_capacity(res * 3);
     for i in 0..res {
         points.push(map_point(i, 0.0));
-        points.push(map_point(i, gizmo.radius));
+        points.push(map_point(i, gizmo.inner_radius));
         points.push(map_point(i, 0.0));
     }
 
@@ -148,23 +148,23 @@ pub fn spawn_context_map_ai_gizmo(
     let mut interests = Vec::with_capacity(interests_len * 3);
     for (i, &w) in ai.interests.weights.iter().enumerate() {
         let vec = ai.interests.index_to_norm_vec2(i);
-        interests.push(pointv(vec * 0.0));
-        interests.push(pointv(vec * 0.0 + vec * w * gizmo.multiply));
-        interests.push(pointv(vec * 0.0));
+        interests.push(pointv(vec * gizmo.inner_radius));
+        interests.push(pointv(vec * gizmo.inner_radius + vec * w * gizmo.multiply));
+        interests.push(pointv(vec * gizmo.inner_radius));
     }
 
     let mut dangers = Vec::with_capacity(dangers_len * 3);
     for (i, &w) in ai.dangers.weights.iter().enumerate() {
         let vec = ai.dangers.index_to_norm_vec2(i);
-        dangers.push(pointv(vec * 0.0));
-        dangers.push(pointv(vec * 0.0 + vec * w * gizmo.multiply));
-        dangers.push(pointv(vec * 0.0));
+        dangers.push(pointv(vec * gizmo.inner_radius));
+        dangers.push(pointv(vec * gizmo.inner_radius + vec * w * gizmo.multiply));
+        dangers.push(pointv(vec * gizmo.inner_radius));
     }
 
     let mut ring = Vec::with_capacity(interests_len);
     for i in 0..interests_len {
         let vec = ai.interests.index_to_norm_vec2(i);
-        ring.push(pointv(vec * gizmo.radius));
+        ring.push(pointv(vec * gizmo.inner_radius));
     }
 
     let green = materials.add(Color::LIME_GREEN.into());
@@ -199,17 +199,19 @@ impl ContextMapAI {
 #[derive(Default, Debug)]
 pub struct Gizmo {
     pub color: Color,
-    pub radius: f32,
+    pub inner_radius: f32,
+    pub outer_radius: f32,
     pub multiply: f32,
     pub gizmo_entity: Option<Entity>,
 }
 
 impl Gizmo {
-    pub fn new(color: Color, radius: f32) -> Self {
+    pub fn new(color: Color, inner_radius: f32, outer_radius: f32) -> Self {
         Self {
             color,
-            radius,
-            multiply: radius,
+            inner_radius,
+            outer_radius,
+            multiply: outer_radius - inner_radius,
             gizmo_entity: None,
         }
     }
@@ -281,12 +283,15 @@ fn update_ai_mouse(
                 ai.dangers.weights *= 0.0;
 
                 let vec = (cursor - trans.translation.truncate()).normalize();
-                ai.interests.add_map(vec, |w| 1.0 - (-0.7 - w).abs());
-                ai.dangers.add_map(vec, |w| 0.5 * w);
+                // ai.interests.add_map(vec, |w| 1.0 - (-0.7 - w).abs());
+                // ai.dangers.add_map(vec, |w| 0.5 * w);
                 // ai.add(vec, |w| w);
                 // ai.add(vec, |w| (w + (1.0 - w * w)));
                 // ai.interests.add_map(vec, |w| 1.0 - w * w);
-                // ai.interests.add_map(vec, |w| (1.0 + w) / 2.0);
+                ai.interests.add_map(vec, |w| (1.0 + w) / 2.0);
+                ai.interests.add_map(Vec2::new(-0.5, 0.0), |w| (1.0 + w) / 2.0);
+                ai.interests.add_map(Vec2::new(0.5, 0.0), |w| -(1.0 + w) / 2.0);
+                ai.dangers.add_map(vec, |w| 0.5 * w);
             }
         }
     }
@@ -312,7 +317,7 @@ fn example_setup(
         .unwrap();
     let gizmo = spawn_context_map_ai_gizmo(
         &ContextMapAI::new_random(),
-        &Gizmo::new(Color::WHITE, 1.0),
+        &Gizmo::new(Color::WHITE, 0.0, 1.0),
         commands,
         &mut materials,
         &mut meshes,
@@ -327,7 +332,8 @@ fn example_setup(
         Gizmo {
             color: Color::ORANGE_RED,
             multiply: 30.0,
-            radius: 30.0,
+            inner_radius: 0.0,
+            outer_radius: 30.0,
             gizmo_entity: None,
         },
     ));

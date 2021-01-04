@@ -1,4 +1,9 @@
-use crate::{bevy_rapier_utils::*, commands_ext::CommandsExt, components::ProximitySet, systems::{context_map::*, steering::Steer, texture_atlas_utils::*}};
+use crate::{
+    bevy_rapier_utils::*,
+    commands_ext::CommandsExt,
+    components::ProximitySet,
+    systems::{context_map::*, steering::Steer, texture_atlas_utils::*},
+};
 use bevy::{input::system::exit_on_esc_system, prelude::*};
 
 pub fn app() -> AppBuilder {
@@ -29,6 +34,7 @@ fn setup(
     rapier.gravity.y = 0.0;
     clear_color.0 = Color::rgb(0.133, 0.137, 0.137);
 
+    let layer0 = 500.0;
     let micro_roguelike_tex = asset_server.load("micro-roguelike/Tilemap/colored_tilemap.png");
     let micro_roguelike_tex_atlas = texture_atlas_grid(
         micro_roguelike_tex.clone(),
@@ -47,12 +53,12 @@ fn setup(
 
     commands
         .spawn((
-            Character::Mob,
+            GameEntity::Mob,
             "Player".to_string(),
-            Transform::from_translation(Vec3::new(0.0, 20.0, 0.0)),
+            Transform::from_translation(Vec3::new(0.0, 32.0, layer0)),
             GlobalTransform::default(),
             ContextMapAI::new_random(),
-            Gizmo::new(Color::WHITE, 8.0),
+            Gizmo::new(Color::WHITE, 8.0, 16.0),
         ))
         .with_child(SpriteSheetBundle {
             texture_atlas: micro_roguelike_tex_atlas.clone(),
@@ -62,12 +68,12 @@ fn setup(
 
     commands
         .spawn((
-            Character::Mob,
+            GameEntity::Mob,
             "Orc".to_string(),
-            Transform::from_translation(Vec3::new(-20.0, 0.0, 0.0)),
+            Transform::from_translation(Vec3::new(-32.0, 0.0, layer0)),
             GlobalTransform::default(),
             ContextMapAI::new_random(),
-            Gizmo::new(Color::WHITE, 8.0),
+            Gizmo::new(Color::WHITE, 8.0, 16.0),
         ))
         .with_child(SpriteSheetBundle {
             texture_atlas: micro_roguelike_tex_atlas.clone(),
@@ -94,9 +100,9 @@ fn setup(
 
     commands
         .spawn((
-            Character::Chest,
+            GameEntity::Chest,
             "Chest".to_string(),
-            Transform::from_translation(Vec3::new(0.0, -20.0, 0.0)),
+            Transform::from_translation(Vec3::new(0.0, -16.0, layer0)),
             GlobalTransform::default(),
         ))
         .with_child(SpriteSheetBundle {
@@ -104,16 +110,35 @@ fn setup(
             sprite: TextureAtlasSprite::new(51),
             ..Default::default()
         });
+
+    let mut wall = |x, y| {
+        commands
+            .spawn((
+                GameEntity::Wall,
+                Transform::from_translation(Vec3::new(x, y, layer0)),
+                GlobalTransform::default(),
+            ))
+            .with_child(SpriteSheetBundle {
+                texture_atlas: micro_roguelike_tex_atlas.clone(),
+                sprite: TextureAtlasSprite::new(1),
+                ..Default::default()
+            });
+    };
+
+    for y in -3..=3 {
+        wall(-16.0, y as f32 * 8.0)
+    }
 }
 
-enum Character {
+enum GameEntity {
     Mob,
     Chest,
+    Wall,
 }
 
 fn update_global_context_ai(
-    mut this_query: Query<(Entity, &Transform, &Character, Mut<ContextMapAI>)>,
-    others_query: Query<(Entity, &Transform, &Character)>,
+    mut this_query: Query<(Entity, &Transform, &GameEntity, Mut<ContextMapAI>)>,
+    others_query: Query<(Entity, &Transform, &GameEntity)>,
 ) {
     let others: Vec<_> = others_query.iter().collect();
 
@@ -129,15 +154,22 @@ fn update_global_context_ai(
                 let len = diff.length();
 
                 match (character, o_character) {
-                    (Character::Mob, Character::Chest) => {
-                        let steer = Steer::new(trans.translation.truncate(), o_trans.translation.truncate());
+                    (GameEntity::Mob, GameEntity::Chest) => {
+                        let steer = Steer::new(
+                            trans.translation.truncate(),
+                            o_trans.translation.truncate(),
+                        );
                         let towards = steer.towards_if_between(10.0, 100.0);
                         ai.interests.add_map(towards, |w| (1.0 + w) / 2.0);
-                    },
-                    (Character::Mob, Character::Mob) => {
-                        let steer = Steer::new(trans.translation.truncate(), o_trans.translation.truncate());
-                        separation += steer.separation(10.0);
-                    },
+                    }
+                    (GameEntity::Mob, GameEntity::Mob) => {
+                    }
+                    (GameEntity::Mob, GameEntity::Wall) => {
+                        if trans.translation.distance(o_trans.translation) < 24.0 {
+                            // TODO set danger map hard, other w function maybe
+                            ai.dangers.add_map((o_trans.translation - trans.translation).truncate().normalize(), |w| if w > 0.9 { 1.0 } else { 0.0 });
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -147,15 +179,25 @@ fn update_global_context_ai(
             separation = separation.normalize();
         }
 
-        ai.interests.add_map(separation, |w| 1.0 - w * w);
+        // ai.interests.add_map(separation, |w| 1.0 - w * w);
     }
 }
 
 fn movement_system(time: Res<Time>, mut this_query: Query<(Mut<Transform>, &ContextMapAI)>) {
     for (mut trans, ai) in this_query.iter_mut() {
-        let interest = ai.interests.max_as_vec2();
-        let _danger = ai.dangers.max_as_vec2();
+        let mut interests = ai.interests.clone();
 
-        // trans.translation += (interest * 1.0 / 60.0 * 50.0).extend(0.0);
+        // TODO maybe leave lowest danger untouched or use a threshold
+        for i in 0..ai.dangers.weights.len() {
+            if ai.dangers.weights[i] > 0.0 {
+                interests.weights[i] = 0.0;
+            }
+        }
+
+        if let Some(vec) = Some(interests.max_as_vec2()) {
+            trans.translation += (vec * 1.0 / 60.0 * 5.0).extend(0.0);
+        } else {
+            // don't move
+        }
     }
 }
