@@ -44,6 +44,21 @@ struct FlockAverages {
     boids: Vec<(Boid, Vec2)>,
 }
 
+impl FlockAverages {
+    fn add(&mut self, boid: &Boid, boid_pos: Vec2) {
+        if self.current_count == 0 {
+            self.position = boid_pos;
+            self.forward = boid.velocity;
+        } else {
+            self.position = 0.5 * (self.position + boid_pos);
+            self.forward = 0.5 * (self.forward + boid.velocity);
+        }
+
+        self.current_count += 1;
+        self.boids[boid.id] = (*boid, boid_pos);
+    }
+}
+
 pub type Flocks = Vec<FlockParameters>;
 
 fn spawn_flocks(commands: &mut Commands, flocks: &Flocks) {
@@ -72,7 +87,7 @@ fn spawn_flocks(commands: &mut Commands, flocks: &Flocks) {
 fn calculate_averages(
     flocks: &Flocks,
     averages: &mut Vec<FlockAverages>,
-    query: &mut Query<(Mut<Boid>, Mut<Transform>)>,
+    iter: &mut dyn Iterator<Item = (Mut<Boid>, Mut<Transform>)>,
 ) {
     let mut result = Vec::<FlockAverages>::with_capacity(flocks.len());
     result.resize_with(result.capacity(), FlockAverages::default);
@@ -89,20 +104,8 @@ fn calculate_averages(
         };
     }
 
-    for (boid, transform) in query.iter_mut() {
-        let average = &mut result[boid.flock_id];
-        let boid_pos = transform.translation.truncate();
-
-        if average.current_count == 0 {
-            average.position = boid_pos;
-            average.forward = boid.velocity;
-        } else {
-            average.position = 0.5 * (average.position + boid_pos);
-            average.forward = 0.5 * (average.forward + boid.velocity);
-        }
-
-        average.current_count += 1;
-        average.boids[boid.id] = (*boid, boid_pos);
+    for (boid, transform) in iter {
+        result[boid.flock_id].add(&boid, transform.translation.truncate());
     }
 
     *averages = result;
@@ -114,7 +117,11 @@ fn flocks_update_system(
     flocks: ResMut<Flocks>,
     mut boids_q: Query<(Mut<Boid>, Mut<Transform>)>,
 ) {
-    calculate_averages(&flocks, &mut averages, &mut boids_q);
+    calculate_averages(
+        &flocks,
+        &mut averages,
+        &mut boids_q.iter_mut(),
+    );
 
     for average in averages.iter_mut() {
         let boids = average.boids.clone();
