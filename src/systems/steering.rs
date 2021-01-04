@@ -30,7 +30,7 @@ pub struct FlockParameters {
     id: usize,
     boid_count: usize,
     color: Color,
-    flock_radius: f32,
+    radius: f32,
     alignment_strength: f32,
     cohesion_strength: f32,
     separation_strength: f32,
@@ -38,8 +38,8 @@ pub struct FlockParameters {
 
 #[derive(Default)]
 struct FlockAverages {
-    average_position: Vec2,
-    average_forward: Vec2,
+    position: Vec2,
+    forward: Vec2,
     current_count: usize,
     boids: Vec<(Boid, Vec2)>,
 }
@@ -52,7 +52,7 @@ fn spawn_flocks(commands: &mut Commands, flocks: &Flocks) {
     for flock in flocks.iter() {
         for index in 0..flock.boid_count {
             let pos = Vec2::new(rng.gen_range(-1.0, 1.0), rng.gen_range(-1.0, 1.0));
-            let pos = pos * flock.flock_radius;
+            let pos = pos * flock.radius;
             let vel = -pos.normalize();
 
             commands.spawn((
@@ -62,7 +62,7 @@ fn spawn_flocks(commands: &mut Commands, flocks: &Flocks) {
                     flock_id: flock.id,
                     velocity: vel * 50.0,
                     max_speed: 50.0,
-                    safe_radius: 50.0,
+                    safe_radius: 25.0,
                 },
             ));
         }
@@ -82,8 +82,8 @@ fn calculate_averages(
         boids.resize(flock.boid_count, Default::default());
 
         result[flock.id] = FlockAverages {
-            average_position: Vec2::zero(),
-            average_forward: Vec2::zero(),
+            position: Vec2::zero(),
+            forward: Vec2::zero(),
             current_count: 0,
             boids,
         };
@@ -94,11 +94,11 @@ fn calculate_averages(
         let boid_pos = transform.translation.truncate();
 
         if average.current_count == 0 {
-            average.average_position = boid_pos;
-            average.average_forward = boid.velocity;
+            average.position = boid_pos;
+            average.forward = boid.velocity;
         } else {
-            average.average_position = 0.5 * (average.average_position + boid_pos);
-            average.average_forward = 0.5 * (average.average_forward + boid.velocity);
+            average.position = 0.5 * (average.position + boid_pos);
+            average.forward = 0.5 * (average.forward + boid.velocity);
         }
 
         average.current_count += 1;
@@ -120,18 +120,28 @@ fn flocks_update_system(
         let boids = average.boids.clone();
 
         for (boid, boid_pos) in boids.iter() {
-            let separation = calculate_separation(&boid, &boid_pos, &boids);
-            let alignment = calculate_alignment(boid.max_speed, average.average_forward);
-            let cohesion = calculate_cohesion(
-                &boid_pos,
-                &average.average_position,
-                flocks[boid.flock_id].flock_radius,
-            );
-            let to_center = -*boid_pos * (*boid_pos / 2000.0).length_squared();
+            let flock = flocks[boid.flock_id];
 
-            let weighted: Vec2 = flocks[boid.flock_id].alignment_strength * alignment
-                + flocks[boid.flock_id].cohesion_strength * cohesion
-                + flocks[boid.flock_id].separation_strength * separation
+            let mut separation = Vec2::zero();
+
+            for (other, other_pos) in boids.iter() {
+                if boid.id != other.id {
+                    let steer = Steer::new(*boid_pos, *other_pos);
+                    separation += steer.separation(boid.safe_radius + other.safe_radius);
+                }
+            }
+
+            if separation.length_squared() > 1.0 {
+                separation = separation.normalize();
+            }
+
+            let cohesion = Steer::new(*boid_pos, average.position).cohesion(flock.radius);
+            let alignment = Steer::alignment(boid.max_speed, average.forward);
+            let to_center = Steer::new(*boid_pos, Vec2::zero()).keep_close(2000.0);
+
+            let weighted: Vec2 = flock.alignment_strength * alignment
+                + flock.cohesion_strength * cohesion
+                + flock.separation_strength * separation
                 + to_center;
             let scaled = weighted * boid.max_speed * time.delta_seconds();
             let mut new_velocity = boid.velocity + scaled;
@@ -265,7 +275,7 @@ fn example_setup(cmds: &mut Commands) {
         cohesion_strength: 1.0,
         separation_strength: 1.0,
         color: Color::WHITE,
-        flock_radius: 100.0,
+        radius: 50.0,
     });
 
     spawn_flocks(cmds, &flocks);
@@ -349,7 +359,13 @@ impl Steer {
         let diff: Vec2 = b - a;
         let distance = diff.length();
         let norm = diff.normalize();
-        Self { a, b, diff, distance, norm }
+        Self {
+            a,
+            b,
+            diff,
+            distance,
+            norm,
+        }
     }
 
     pub fn towards_if_between(&self, min: f32, max: f32) -> Vec2 {
@@ -361,7 +377,7 @@ impl Steer {
     }
 
     pub fn separation(&self, safe_distance: f32) -> Vec2 {
-        let overlap = safe_distance - self.distance;
+        let overlap = self.distance - safe_distance;
         if overlap < 0.0 {
             self.norm * overlap / safe_distance
         } else {
@@ -374,6 +390,20 @@ impl Steer {
             self.diff / radius
         } else {
             self.norm
+        }
+    }
+
+    pub fn keep_close(&self, max_radius: f32) -> Vec2 {
+        self.diff * (self.diff / max_radius).length_squared()
+    }
+
+    pub fn alignment(max_speed: f32, average_forward: Vec2) -> Vec2 {
+        let alignment = average_forward / max_speed;
+
+        if alignment.length_squared() > 1.0 {
+            alignment.normalize()
+        } else {
+            alignment
         }
     }
 }

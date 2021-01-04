@@ -121,6 +121,8 @@ fn update_global_context_ai(
         ai.interests.weights *= 0.0; // 1.0 - 0.5 * time.delta_seconds();
         ai.dangers.weights *= 0.0; // 1.0 - 0.5 * time.delta_seconds();
 
+        let mut separation = Vec2::zero();
+
         for (other, o_trans, o_character) in others.iter() {
             if &this != other {
                 let diff: Vec2 = trans.translation.truncate() - o_trans.translation.truncate();
@@ -134,13 +136,18 @@ fn update_global_context_ai(
                     },
                     (Character::Mob, Character::Mob) => {
                         let steer = Steer::new(trans.translation.truncate(), o_trans.translation.truncate());
-                        let separation = 0.9 * steer.separation(10.0);
-                        ai.interests.add_map(separation, |w| 1.0 - w * w);
+                        separation += steer.separation(10.0);
                     },
                     _ => {}
                 }
             }
         }
+
+        if separation.length_squared() > 1.0 {
+            separation = separation.normalize();
+        }
+
+        ai.interests.add_map(separation, |w| 1.0 - w * w);
     }
 }
 
