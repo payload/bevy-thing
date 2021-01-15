@@ -88,6 +88,20 @@ impl ContextMap {
         let mag = self.weights[index];
         self.index_to_norm_vec2(index) * (add + mul * mag)
     }
+
+    pub fn direction(&self) -> Vec2 {
+        let mut dir = Vec2::zero();
+
+        for i in 0..self.weights.len() {
+            dir += self.index_to_vec2(i);
+        }
+
+        if dir == Vec2::zero() {
+            dir
+        } else {
+            dir.normalize()
+        }
+    }
 }
 
 pub fn spawn_context_map_gizmo(
@@ -289,8 +303,10 @@ fn update_ai_mouse(
                 // ai.add(vec, |w| (w + (1.0 - w * w)));
                 // ai.interests.add_map(vec, |w| 1.0 - w * w);
                 ai.interests.add_map(vec, |w| (1.0 + w) / 2.0);
-                ai.interests.add_map(Vec2::new(-0.5, 0.0), |w| (1.0 + w) / 2.0);
-                ai.interests.add_map(Vec2::new(0.5, 0.0), |w| -(1.0 + w) / 2.0);
+                ai.interests
+                    .add_map(Vec2::new(-0.5, 0.0), |w| (1.0 + w) / 2.0);
+                ai.interests
+                    .add_map(Vec2::new(0.5, 0.0), |w| -(1.0 + w) / 2.0);
                 ai.dangers.add_map(vec, |w| 0.5 * w);
             }
         }

@@ -150,24 +150,28 @@ fn update_global_context_ai(
 
         for (other, o_trans, o_character) in others.iter() {
             if &this != other {
-                let diff: Vec2 = trans.translation.truncate() - o_trans.translation.truncate();
+                let o_pos = pos(o_trans);
+                let pos = pos(trans);
+                let diff: Vec2 = pos - o_pos;
                 let len = diff.length();
 
                 match (character, o_character) {
                     (GameEntity::Mob, GameEntity::Chest) => {
-                        let steer = Steer::new(
-                            trans.translation.truncate(),
-                            o_trans.translation.truncate(),
-                        );
+                        let steer = Steer::new(pos, o_pos);
                         let towards = steer.towards_if_between(10.0, 100.0);
                         ai.interests.add_map(towards, |w| (1.0 + w) / 2.0);
                     }
-                    (GameEntity::Mob, GameEntity::Mob) => {
-                    }
+                    (GameEntity::Mob, GameEntity::Mob) => {}
                     (GameEntity::Mob, GameEntity::Wall) => {
-                        if trans.translation.distance(o_trans.translation) < 24.0 {
+                        if len < 24.0 {
                             // TODO set danger map hard, other w function maybe
-                            ai.dangers.add_map((o_trans.translation - trans.translation).truncate().normalize(), |w| if w > 0.9 { 1.0 } else { 0.0 });
+                            ai.dangers.add_map((o_pos - pos).normalize(), |w| {
+                                if w > 0.9 {
+                                    1.0
+                                } else {
+                                    0.0
+                                }
+                            });
                         }
                     }
                     _ => {}
@@ -194,10 +198,12 @@ fn movement_system(time: Res<Time>, mut this_query: Query<(Mut<Transform>, &Cont
             }
         }
 
-        if let Some(vec) = Some(interests.max_as_vec2()) {
-            trans.translation += (vec * 1.0 / 60.0 * 5.0).extend(0.0);
-        } else {
-            // don't move
-        }
+        let dir = (interests.direction() + ai.dangers.direction().perp()).normalize();
+        let movement = dir * 1.0 / 60.0 * 5.0;
+        trans.translation += movement.extend(0.0);
     }
+}
+
+fn pos(trans: &Transform) -> Vec2 {
+    trans.translation.truncate()
 }
