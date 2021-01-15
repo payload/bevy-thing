@@ -7,22 +7,19 @@ pub mod texture_atlas_utils;
 /// inspiration by Game Endeavor https://www.youtube.com/watch?v=6BrZryMz-ac
 ///
 /// Paper by Andrew Frey "Context Steering" http://www.gameaipro.com/GameAIPro2/GameAIPro2_Chapter18_Context_Steering_Behavior-Driven_Steering_at_the_Macro_Scale.pdf
-use bevy::{prelude::*, render::camera::Camera};
-use bevy_prototype_lyon::prelude::*;
-use std::{f32::consts::PI, fmt::Display};
+use bevy::prelude::*;
 
 use self::context_map::{ContextMap, ContextMapV};
-use crate::bevy_rapier_utils::na;
 
 pub fn steer_along_path(my_trans: &Transform) -> Vec2 {
     let get_direction = |pos| circle_nearest_tangent(Vec2::zero(), pos);
     let interest = interest(my_trans, Some(&get_direction));
     let danger = danger(my_trans, &[]);
 
-    let c = ContextMap::new(
+    let _c = ContextMap::new(
         interest
             .weights
-            .map_with_location(|r, c, v| if danger.weights[r] > 0.0 { 0.0 } else { v })
+            .map_with_location(|r, _c, v| if danger.weights[r] > 0.0 { 0.0 } else { v })
     );
 
     interest.direction()

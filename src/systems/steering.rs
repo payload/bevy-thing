@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 /// based on John Peels flock-rs, MIT licensed https://github.com/JohnPeel/flock-rs
 use bevy::{
     prelude::*,

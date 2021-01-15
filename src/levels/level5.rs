@@ -1,7 +1,6 @@
 use crate::{
     bevy_rapier_utils::*,
     commands_ext::CommandsExt,
-    components::ProximitySet,
     systems::{context_map::*, steering::Steer, texture_atlas_utils::*},
 };
 use bevy::{input::system::exit_on_esc_system, prelude::*};
@@ -183,11 +182,11 @@ fn update_global_context_ai(
             separation = separation.normalize();
         }
 
-        // ai.interests.add_map(separation, |w| 1.0 - w * w);
+        ai.interests.add_map(separation, |w| 1.0 - w * w);
     }
 }
 
-fn movement_system(time: Res<Time>, mut this_query: Query<(Mut<Transform>, &ContextMapAI)>) {
+fn movement_system(mut this_query: Query<(Mut<Transform>, &ContextMapAI)>) {
     for (mut trans, ai) in this_query.iter_mut() {
         let mut interests = ai.interests.clone();
 
