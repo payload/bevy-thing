@@ -418,11 +418,23 @@ fn transfer_item(
     transfer_query: Query<(Entity, &TransferItem)>,
     added_transfer_query: Query<&TransferItem, Added<TransferItem>>,
     mut transform_query: Query<Mut<Transform>>,
-    mut inventory_query: Query<Mut<Inventory>>,
+    mut inventory_query: Query<(Option<&String>, Mut<Inventory>)>,
 ) {
+    let log = |name: Option<&String>, inventory: Mut<Inventory>, transfer: &TransferItem| {
+        if name.is_some() {
+            println!(
+                "{} has {} {}",
+                name.unwrap(),
+                inventory.count(transfer.0),
+                transfer.0
+            );
+        }
+    };
+
     for transfer in added_transfer_query.iter() {
-        for mut inventory in inventory_query.get_mut(transfer.1) {
+        for (name, mut inventory) in inventory_query.get_mut(transfer.1) {
             inventory.take(transfer.0);
+            log(name, inventory, transfer);
         }
     }
 
@@ -437,8 +449,9 @@ fn transfer_item(
                 if distance < 1.0 {
                     // item transfered
                     commands.despawn_recursive(item);
-                    for mut inventory in inventory_query.get_mut(transfer.2) {
+                    for (name, mut inventory) in inventory_query.get_mut(transfer.2) {
                         inventory.put(transfer.0);
+                        log(name, inventory, transfer);
                     }
                 } else {
                     // item in transit

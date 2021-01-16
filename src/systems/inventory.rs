@@ -18,6 +18,10 @@ impl Inventory {
         self.items.push(item);
     }
 
+    pub fn count(&self, item: &'static str) -> usize {
+        self.items.iter().filter(|it| **it == item).count()
+    }
+
     fn pos(&self, item: &'static str) -> Option<usize> {
         self.items.iter().position(|it| *it == item)
     }
