@@ -20,9 +20,8 @@ fn app() -> AppBuilder {
         .add_system(exit_on_esc_system.system())
         //
         .add_startup_system(setup.system())
-        .add_event::<PlayerEvent>()
         .add_system(player_input.system())
-        .add_system(player_move.system())
+        .add_system(player_update.system())
         .add_system(player_animation.system())
         .add_system(sprite_animation_update.system())
         .add_system(y_sort.system());
@@ -51,7 +50,13 @@ fn setup(
     );
 
     let oven_tex = asset_server.load("oven.png");
-    let oven_atlas = texture_atlas_grid(oven_tex.clone(), Vec2::new(8.0, 8.0), Vec2::zero(), &mut atlases, commands);
+    let oven_atlas = texture_atlas_grid(
+        oven_tex.clone(),
+        Vec2::new(8.0, 8.0),
+        Vec2::zero(),
+        &mut atlases,
+        commands,
+    );
 
     commands.spawn({
         let mut cam = Camera2dBundle::default();
@@ -73,12 +78,10 @@ fn setup(
         "Player".to_string(),
         PlayerMarker,
         YSortMarker,
+        PlayerState::Idle,
         Transform::from_translation(Vec3::new(0.0, 16.0, LAYER_0)),
         GlobalTransform::default(),
-        SpriteAnimation::new(
-            dress,
-            vec![("standing", vec![8]), ("walking", vec![0, 1, 2])],
-        ),
+        SpriteAnimation::new(dress, &[("standing", &[8]), ("walking", &[0, 1, 2])]),
     ));
 
     commands.insert_one(
@@ -102,6 +105,16 @@ fn setup(
     let oven = commands.entity((
         "Oven".to_string(),
         YSortMarker,
+        OvenMarker,
+        SpriteAnimation::new(
+            dress,
+            &[
+                ("off", &[0]),
+                ("on", &[1]),
+                ("on_fish", &[2]),
+                ("off_fish", &[3]),
+            ],
+        ),
         Transform::from_translation(Vec3::new(0.0, 0.0, LAYER_0)),
         GlobalTransform::default(),
     ));
@@ -125,12 +138,12 @@ struct SpriteAnimation {
 }
 
 impl SpriteAnimation {
-    pub fn new(target: Entity, anims: Vec<(&'static str, Vec<u32>)>) -> Self {
+    pub fn new(target: Entity, anims: &[(&'static str, &[u32])]) -> Self {
         let current = anims.first().map(|e| e.0);
         let timer = Timer::from_seconds(0.11, true);
         let mut map = HashMap::with_capacity(anims.len());
         for anim in anims {
-            map.insert(anim.0, anim.1);
+            map.insert(anim.0, anim.1.iter().cloned().collect());
         }
         Self {
             current,
@@ -152,6 +165,10 @@ impl SpriteAnimation {
 
     pub fn set(&mut self, name: &'static str) {
         self.current = Some(name);
+    }
+
+    pub fn get(&self) -> Option<&str> {
+        self.current
     }
 
     pub fn update(&mut self, secs: f32) {
@@ -176,14 +193,17 @@ fn sprite_animation_update(
 }
 
 struct PlayerMarker;
+struct OvenMarker;
 
-enum PlayerEvent {
+#[derive(Clone, Debug, PartialEq)]
+enum PlayerState {
+    Idle,
     Interact,
     Observe,
     Move(Vec2),
 }
 
-fn player_input(keys: Res<Input<KeyCode>>, mut events: ResMut<Events<PlayerEvent>>) {
+fn player_input(keys: Res<Input<KeyCode>>, mut state_query: Query<Mut<PlayerState>>) {
     let mut movement = Vec2::default();
     if keys.pressed(KeyCode::W) {
         movement.y += 1.0;
@@ -197,38 +217,97 @@ fn player_input(keys: Res<Input<KeyCode>>, mut events: ResMut<Events<PlayerEvent
     if keys.pressed(KeyCode::D) {
         movement.x += 1.0;
     }
-    if movement.x != 0.0 || movement.y != 0.0 {
-        events.send(PlayerEvent::Move(movement.normalize()))
+    let has_movement = if movement.x != 0.0 || movement.y != 0.0 {
+        movement = movement.normalize();
+        true
     } else {
-        events.send(PlayerEvent::Move(movement))
-    }
+        false
+    };
 
-    if keys.just_pressed(KeyCode::E) {
-        events.send(PlayerEvent::Interact);
-    }
+    for mut state in state_query.iter_mut() {
+        let new_state = match *state {
+            PlayerState::Idle => {
+                if keys.just_pressed(KeyCode::E) {
+                    PlayerState::Interact
+                } else if keys.just_pressed(KeyCode::F) {
+                    PlayerState::Observe
+                } else if has_movement {
+                    PlayerState::Move(movement)
+                } else {
+                    PlayerState::Idle
+                }
+            }
+            PlayerState::Interact => {
+                if keys.just_released(KeyCode::E) {
+                    PlayerState::Idle
+                } else {
+                    PlayerState::Interact
+                }
+            }
+            PlayerState::Observe => {
+                if keys.just_released(KeyCode::F) {
+                    PlayerState::Idle
+                } else {
+                    PlayerState::Observe
+                }
+            }
+            PlayerState::Move(_) => {
+                if keys.just_pressed(KeyCode::E) {
+                    PlayerState::Interact
+                } else if has_movement {
+                    PlayerState::Move(movement)
+                } else {
+                    PlayerState::Idle
+                }
+            }
+        };
 
-    if keys.just_pressed(KeyCode::F) {
-        events.send(PlayerEvent::Observe);
+        if new_state != *state {
+            *state = new_state;
+        }
     }
 }
 
-fn player_move(
-    mut reader: Local<EventReader<PlayerEvent>>,
-    events: Res<Events<PlayerEvent>>,
+fn player_update(
     mut bodies: ResMut<RigidBodySet>,
-    player_query: Query<&RigidBodyHandleComponent, With<PlayerMarker>>,
+    player_query: Query<(&PlayerState, &Transform, &RigidBodyHandleComponent), (Changed<PlayerState>, With<PlayerMarker>)>,
+    oven_query: Query<(Entity, &Transform), With<OvenMarker>>,
+    mut anim_query: Query<Mut<SpriteAnimation>>,
 ) {
-    for event in reader.iter(&events) {
-        match event {
-            PlayerEvent::Move(dir) => {
+    for (state, trans, body) in player_query.iter() {
+        match state {
+            PlayerState::Move(dir) => {
                 let movement: Vec2 = *dir * 30.0;
-
-                for body in player_query.iter() {
-                    if let Some(body) = bodies.get_mut(body.handle()) {
-                        body.set_linvel(movement.into_vector2(), true);
-                    }
+                for body in bodies.get_mut(body.handle()) {
+                    body.set_linvel(movement.into_vector2(), true);
                 }
             }
+            _ => {
+                for body in bodies.get_mut(body.handle()) {
+                    body.set_linvel(Vector2::default(), true);
+                }
+            }
+        }
+
+        match state {
+            PlayerState::Interact => {
+                for (oven, oven_trans) in oven_query.iter() {
+                    if pos(trans).distance_squared(pos(oven_trans)) < 64.0 {
+                        for mut anim in anim_query.get_mut(oven) {
+                            let name = anim.get().map(String::from);
+                            for name in name {
+                                match name.as_str() {
+                                    "off" => anim.set("on"),
+                                    "on" => anim.set("on_fish"),
+                                    "on_fish" => anim.set("off_fish"),
+                                    "off_fish" => anim.set("off"),
+                                    _ => {},
+                                }
+                            }
+                        }
+                    }
+                }
+            },
             _ => {}
         }
     }
@@ -247,4 +326,8 @@ fn player_animation(
             }
         }
     }
+}
+
+fn pos(trans: &Transform) -> Vec2 {
+    trans.translation.truncate()
 }
