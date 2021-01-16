@@ -24,7 +24,8 @@ fn app() -> AppBuilder {
         .add_system(player_input.system())
         .add_system(player_move.system())
         .add_system(player_animation.system())
-        .add_system(sprite_animation_update.system());
+        .add_system(sprite_animation_update.system())
+        .add_system(y_sort.system());
     app
 }
 
@@ -44,10 +45,13 @@ fn setup(
     let human_atlas = texture_atlas_grid(
         human_tex.clone(),
         Vec2::new(8.0, 8.0),
-        Vec2::new(0.0, 0.0),
+        Vec2::zero(),
         &mut atlases,
         commands,
     );
+
+    let oven_tex = asset_server.load("oven.png");
+    let oven_atlas = texture_atlas_grid(oven_tex.clone(), Vec2::new(8.0, 8.0), Vec2::zero(), &mut atlases, commands);
 
     commands.spawn({
         let mut cam = Camera2dBundle::default();
@@ -68,8 +72,9 @@ fn setup(
     let player = commands.entity((
         "Player".to_string(),
         PlayerMarker,
-        GlobalTransform::default(),
+        YSortMarker,
         Transform::from_translation(Vec3::new(0.0, 16.0, LAYER_0)),
+        GlobalTransform::default(),
         SpriteAnimation::new(
             dress,
             vec![("standing", vec![8]), ("walking", vec![0, 1, 2])],
@@ -79,6 +84,7 @@ fn setup(
     commands.insert_one(
         player,
         RigidBodyBuilder::new_dynamic()
+            .translation(0.0, 16.0)
             .lock_rotations()
             .user_data(player.to_user_data()),
     );
@@ -86,6 +92,28 @@ fn setup(
     let collider = commands.entity((ColliderBuilder::ball(2.0).user_data(player.to_user_data()),));
 
     commands.push_children(player, &[dress, collider]);
+
+    //
+
+    let dress = commands.entity(SpriteSheetBundle {
+        texture_atlas: oven_atlas.clone(),
+        ..Default::default()
+    });
+    let oven = commands.entity((
+        "Oven".to_string(),
+        YSortMarker,
+        Transform::from_translation(Vec3::new(0.0, 0.0, LAYER_0)),
+        GlobalTransform::default(),
+    ));
+    commands.push_children(oven, &[dress]);
+}
+
+struct YSortMarker;
+
+fn y_sort(mut trans_query: Query<Mut<Transform>, With<YSortMarker>>) {
+    for mut trans in trans_query.iter_mut() {
+        trans.translation.z = trans.translation.z.floor() + 0.5 - trans.translation.y * 0.001;
+    }
 }
 
 struct SpriteAnimation {
