@@ -9,6 +9,7 @@ edition = "2018"
 [dependencies]
 # { git = "https://github.com/bevyengine/bevy.git", branch = "master" }
 bevy = "0.4"
+bevy_easings = "0.3"
 bevy_rapier2d = "0.7"
 noise = "0.6"
 rand = "0.5"

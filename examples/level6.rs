@@ -22,11 +22,17 @@ fn app() -> AppBuilder {
         .add_system(player_update.system())
         .add_system(player_animation.system())
         .add_system(sprite_animation_update.system())
-        .add_system(y_sort.system());
+        .add_system(y_sort.system())
+        .add_system(handle_actions.system())
+        .add_event::<Action>();
     app
 }
 
 const LAYER_0: f32 = 500.0;
+const LAYER_10: f32 = LAYER_0 + 10.0;
+
+struct HumanAtlas(Handle<TextureAtlas>);
+struct OvenAtlas(Handle<TextureAtlas>);
 
 fn setup(
     commands: &mut Commands,
@@ -55,6 +61,9 @@ fn setup(
         &mut atlases,
         commands,
     );
+
+    commands.insert_resource(HumanAtlas(human_atlas.clone()));
+    commands.insert_resource(OvenAtlas(oven_atlas.clone()));
 
     commands.spawn({
         let mut cam = Camera2dBundle::default();
@@ -111,13 +120,17 @@ fn setup(
                 ("on", &[1]),
                 ("on_fish", &[2]),
                 ("off_fish", &[3]),
+                ("on_bakedfish", &[4]),
+                ("off_bakedfish", &[5]),
             ],
         ),
-        Transform::from_translation(Vec3::new(0.0, 0.0, LAYER_0)),
+        Transform::from_translation(Vec3::new(16.0, 0.0, LAYER_0)),
         GlobalTransform::default(),
     ));
     commands.push_children(oven, &[dress]);
 }
+
+struct ItemMarker;
 
 struct YSortMarker;
 
@@ -278,15 +291,16 @@ fn player_input(keys: Res<Input<KeyCode>>, mut state_query: Query<Mut<PlayerStat
 }
 
 fn player_update(
+    mut actions: ResMut<Events<Action>>,
     mut bodies: ResMut<RigidBodySet>,
     player_query: Query<
-        (&PlayerState, &Transform, &RigidBodyHandleComponent),
+        (Entity, &PlayerState, &Transform, &RigidBodyHandleComponent),
         (Changed<PlayerState>, With<PlayerMarker>),
     >,
     oven_query: Query<(Entity, &Transform), With<OvenMarker>>,
     mut anim_query: Query<Mut<SpriteAnimation>>,
 ) {
-    for (state, trans, body) in player_query.iter() {
+    for (player, state, trans, body) in player_query.iter() {
         match state {
             PlayerState::Move(dir) => {
                 let movement: Vec2 = *dir * 30.0;
@@ -305,6 +319,8 @@ fn player_update(
             PlayerState::Interact => {
                 for (oven, oven_trans) in oven_query.iter() {
                     if pos(trans).distance_squared(pos(oven_trans)) < 64.0 {
+                        // interact with oven
+
                         for mut anim in anim_query.get_mut(oven) {
                             let name = anim.get().map(String::from);
                             for name in name {
@@ -312,7 +328,10 @@ fn player_update(
                                     "off" => anim.set("on"),
                                     "on" => anim.set("on_fish"),
                                     "on_fish" => anim.set("off_fish"),
-                                    "off_fish" => anim.set("off"),
+                                    "off_fish" => {
+                                        anim.set("off");
+                                        actions.send(Action::TransferItem("fish", oven, player));
+                                    }
                                     _ => {}
                                 }
                             }
@@ -321,6 +340,51 @@ fn player_update(
                 }
             }
             _ => {}
+        }
+    }
+}
+
+enum Action {
+    TransferItem(&'static str, Entity, Entity),
+}
+
+fn handle_actions(
+    commands: &mut Commands,
+    transform_query: Query<&Transform>,
+    mut reader: Local<EventReader<Action>>,
+    actions: Res<Events<Action>>,
+    oven_atlas: Res<OvenAtlas>,
+) {
+    for action in reader.iter(&actions) {
+        match action {
+            Action::TransferItem(item, from, to) => {
+                for from_trans in transform_query.get(*from) {
+                    for to_trans in transform_query.get(*to) {
+                        let from_pos = pos(from_trans);
+                        let _to_pos = pos(to_trans);
+
+                        let dress = commands.entity(SpriteSheetBundle {
+                            transform: Transform::from_xyz(0.0, 8.0, 0.0),
+                            texture_atlas: oven_atlas.0.clone(),
+                            ..Default::default()
+                        });
+
+                        let mut anim =
+                            SpriteAnimation::new(dress, &[("fish", &[10]), ("bakedfish", &[11])]);
+                        anim.set(item);
+
+                        let item = commands.entity((
+                            "Item".to_string(),
+                            ItemMarker,
+                            Transform::from_translation(from_pos.extend(LAYER_10)),
+                            GlobalTransform::default(),
+                            anim,
+                        ));
+
+                        commands.push_children(item, &[dress]);
+                    }
+                }
+            }
         }
     }
 }
