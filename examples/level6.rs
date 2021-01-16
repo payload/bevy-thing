@@ -2,9 +2,7 @@ fn main() {
     app().run();
 }
 
-use bevy::{
-    core::Timer, input::system::exit_on_esc_system, prelude::*, utils::AHashExt, utils::HashMap,
-};
+use bevy::{core::Timer, input::system::exit_on_esc_system, prelude::*, utils::HashMap};
 use bevy_thing::{
     bevy_rapier_utils::*, commands_ext::CommandsExt, systems::texture_atlas_utils::*,
 };
@@ -142,10 +140,13 @@ impl SpriteAnimation {
     pub fn new(target: Entity, anims: &[(&'static str, &[u32])]) -> Self {
         let current = anims.first().map(|e| e.0);
         let timer = Timer::from_seconds(0.11, true);
-        let mut map = HashMap::with_capacity(anims.len());
+        let mut map = HashMap::default();
+        map.reserve(anims.len());
+
         for anim in anims {
             map.insert(anim.0, anim.1.iter().cloned().collect());
         }
+
         Self {
             current,
             anim_index: 0,
