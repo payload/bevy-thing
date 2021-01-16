@@ -2,6 +2,7 @@ pub mod context_map;
 pub mod jabber;
 pub mod steering;
 pub mod texture_atlas_utils;
+pub mod inventory;
 
 ///
 /// inspiration by Game Endeavor https://www.youtube.com/watch?v=6BrZryMz-ac

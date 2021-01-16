@@ -6,8 +6,10 @@ use std::time::Duration;
 
 use bevy::{core::Timer, input::system::exit_on_esc_system, prelude::*, utils::HashMap};
 use bevy_thing::{
-    bevy_rapier_utils::*, commands_ext::CommandsExt, entities::OvenState,
-    systems::texture_atlas_utils::*,
+    bevy_rapier_utils::*,
+    commands_ext::CommandsExt,
+    entities::OvenState,
+    systems::{inventory::Inventory, texture_atlas_utils::*},
 };
 
 fn app() -> AppBuilder {
@@ -93,6 +95,7 @@ fn setup(
         PlayerMarker,
         YSortMarker,
         PlayerState::Idle,
+        Inventory::default(),
         Transform::from_translation(Vec3::new(0.0, 16.0, LAYER_0)),
         GlobalTransform::default(),
         SpriteAnimation::new(
@@ -413,8 +416,16 @@ struct TransferItem(&'static str, Entity, Entity);
 fn transfer_item(
     commands: &mut Commands,
     transfer_query: Query<(Entity, &TransferItem)>,
+    added_transfer_query: Query<&TransferItem, Added<TransferItem>>,
     mut transform_query: Query<Mut<Transform>>,
+    mut inventory_query: Query<Mut<Inventory>>,
 ) {
+    for transfer in added_transfer_query.iter() {
+        for mut inventory in inventory_query.get_mut(transfer.1) {
+            inventory.take(transfer.0);
+        }
+    }
+
     for (item, transfer) in transfer_query.iter() {
         if let Ok(to_trans) = transform_query.get_component(transfer.2) {
             let to_pos = pos(to_trans);
@@ -426,6 +437,9 @@ fn transfer_item(
                 if distance < 1.0 {
                     // item transfered
                     commands.despawn_recursive(item);
+                    for mut inventory in inventory_query.get_mut(transfer.2) {
+                        inventory.put(transfer.0);
+                    }
                 } else {
                     // item in transit
                     let new_pos = item_pos.lerp(to_pos, 0.15);
