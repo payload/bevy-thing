@@ -2,9 +2,12 @@ fn main() {
     app().run();
 }
 
+use std::time::Duration;
+
 use bevy::{core::Timer, input::system::exit_on_esc_system, prelude::*, utils::HashMap};
 use bevy_thing::{
-    bevy_rapier_utils::*, commands_ext::CommandsExt, systems::texture_atlas_utils::*,
+    bevy_rapier_utils::*, commands_ext::CommandsExt, entities::OvenState,
+    systems::texture_atlas_utils::*,
 };
 
 fn app() -> AppBuilder {
@@ -26,6 +29,8 @@ fn app() -> AppBuilder {
         .add_system(y_sort.system())
         .add_system(handle_actions.system())
         .add_system(transfer_item.system())
+        .add_system(animation_change.system())
+        .add_system(oven_update.system())
         .add_event::<Action>();
     app
 }
@@ -90,7 +95,14 @@ fn setup(
         PlayerState::Idle,
         Transform::from_translation(Vec3::new(0.0, 16.0, LAYER_0)),
         GlobalTransform::default(),
-        SpriteAnimation::new(dress, &[("standing", &[8]), ("walking", &[0, 17, 26])]),
+        SpriteAnimation::new(
+            dress,
+            &[
+                ("standing", &[8]),
+                ("walking", &[0, 17, 26]),
+                ("eating", &[8, 12]),
+            ],
+        ),
     ));
 
     commands.insert_one(
@@ -114,7 +126,12 @@ fn setup(
     let oven = commands.entity((
         "Oven".to_string(),
         YSortMarker,
-        OvenMarker,
+        OvenState {
+            baking_timer: Timer::new(Duration::from_secs_f32(3.0), false),
+            item: None,
+            baked_item: None,
+            on_fire: false,
+        },
         SpriteAnimation::new(
             dress,
             &[
@@ -217,7 +234,6 @@ fn sprite_animation_update(
 }
 
 struct PlayerMarker;
-struct OvenMarker;
 
 #[derive(Clone, Debug, PartialEq)]
 enum PlayerState {
@@ -299,8 +315,7 @@ fn player_update(
         (Entity, &PlayerState, &Transform, &RigidBodyHandleComponent),
         (Changed<PlayerState>, With<PlayerMarker>),
     >,
-    oven_query: Query<(Entity, &Transform), With<OvenMarker>>,
-    mut anim_query: Query<Mut<SpriteAnimation>>,
+    mut oven_query: Query<(Entity, &Transform, Mut<OvenState>)>,
 ) {
     for (player, state, trans, body) in player_query.iter() {
         match state {
@@ -319,29 +334,32 @@ fn player_update(
 
         match state {
             PlayerState::Interact => {
-                for (oven, oven_trans) in oven_query.iter() {
+                for (oven, oven_trans, mut oven_state) in oven_query.iter_mut() {
                     if pos(trans).distance_squared(pos(oven_trans)) < 64.0 {
                         // interact with oven
-
-                        for mut anim in anim_query.get_mut(oven) {
-                            let name = anim.get().map(String::from);
-                            for name in name {
-                                match name.as_str() {
-                                    "off" => anim.set("on"),
-                                    "on" => anim.set("on_fish"),
-                                    "on_fish" => anim.set("off_fish"),
-                                    "off_fish" => {
-                                        anim.set("off");
-                                        actions.send(Action::TransferItem("fish", oven, player));
-                                    }
-                                    _ => {}
-                                }
-                            }
+                        for item in oven_state.interact() {
+                            actions.send(Action::TransferItem(item, oven, player));
                         }
                     }
                 }
             }
             _ => {}
+        }
+    }
+}
+
+fn oven_update(time: Res<Time>, mut query: Query<Mut<OvenState>>) {
+    let delta = time.delta_seconds();
+    for mut oven in query.iter_mut() {
+        oven.baking_timer.tick(delta);
+    }
+}
+
+fn animation_change(mut query: Query<(&OvenState, Mut<SpriteAnimation>)>) {
+    for (state, mut anim) in query.iter_mut() {
+        let name = state.animation();
+        if Some(name) != anim.get() {
+            anim.set(name);
         }
     }
 }
@@ -403,12 +421,14 @@ fn transfer_item(
 
             if let Ok(mut item_trans) = transform_query.get_component_mut(item) {
                 let item_pos = pos(&item_trans);
+                let distance = to_pos.distance(item_pos);
 
-                if to_pos.distance_squared(item_pos) < 1.0 {
+                if distance < 1.0 {
                     // item transfered
                     commands.despawn_recursive(item);
                 } else {
-                    let new_pos = item_pos.lerp(to_pos, 0.1);
+                    // item in transit
+                    let new_pos = item_pos.lerp(to_pos, 0.15);
                     item_trans.translation.x = new_pos.x;
                     item_trans.translation.y = new_pos.y;
                 }
