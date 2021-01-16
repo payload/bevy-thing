@@ -81,7 +81,7 @@ fn setup(
         PlayerState::Idle,
         Transform::from_translation(Vec3::new(0.0, 16.0, LAYER_0)),
         GlobalTransform::default(),
-        SpriteAnimation::new(dress, &[("standing", &[8]), ("walking", &[0, 1, 2])]),
+        SpriteAnimation::new(dress, &[("standing", &[8]), ("walking", &[0, 17, 26])]),
     ));
 
     commands.insert_one(
@@ -134,6 +134,7 @@ struct SpriteAnimation {
     anim_index: usize,
     map: HashMap<&'static str, Vec<u32>>,
     timer: Timer,
+    flip_x: bool,
     target: Entity,
 }
 
@@ -150,6 +151,7 @@ impl SpriteAnimation {
             anim_index: 0,
             map,
             timer,
+            flip_x: false,
             target,
         }
     }
@@ -181,13 +183,19 @@ impl SpriteAnimation {
 fn sprite_animation_update(
     time: Res<Time>,
     mut anim_query: Query<Mut<SpriteAnimation>>,
-    mut sprite_query: Query<Mut<TextureAtlasSprite>>,
+    mut sprite_query: Query<(Mut<Transform>, Mut<TextureAtlasSprite>)>,
 ) {
     for mut anim in anim_query.iter_mut() {
         anim.update(time.delta_seconds());
 
-        for mut sprite in sprite_query.get_mut(anim.target) {
+        for (mut trans, mut sprite) in sprite_query.get_mut(anim.target) {
             sprite.index = anim.index();
+
+            if anim.flip_x && trans.scale.x > 0.0 {
+                trans.scale.x = -trans.scale.x;
+            } else if !anim.flip_x && trans.scale.x < 0.0 {
+                trans.scale.x = -trans.scale.x;
+            }
         }
     }
 }
@@ -270,7 +278,10 @@ fn player_input(keys: Res<Input<KeyCode>>, mut state_query: Query<Mut<PlayerStat
 
 fn player_update(
     mut bodies: ResMut<RigidBodySet>,
-    player_query: Query<(&PlayerState, &Transform, &RigidBodyHandleComponent), (Changed<PlayerState>, With<PlayerMarker>)>,
+    player_query: Query<
+        (&PlayerState, &Transform, &RigidBodyHandleComponent),
+        (Changed<PlayerState>, With<PlayerMarker>),
+    >,
     oven_query: Query<(Entity, &Transform), With<OvenMarker>>,
     mut anim_query: Query<Mut<SpriteAnimation>>,
 ) {
@@ -301,13 +312,13 @@ fn player_update(
                                     "on" => anim.set("on_fish"),
                                     "on_fish" => anim.set("off_fish"),
                                     "off_fish" => anim.set("off"),
-                                    _ => {},
+                                    _ => {}
                                 }
                             }
                         }
                     }
                 }
-            },
+            }
             _ => {}
         }
     }
@@ -319,8 +330,19 @@ fn player_animation(
 ) {
     for (mut anim, body) in player_query.iter_mut() {
         for body in bodies.get_mut(body.handle()) {
-            if body.linvel().magnitude_squared() > 0.5 {
+            let linvel = body.linvel();
+
+            if linvel.magnitude_squared() > 0.5 {
                 anim.set("walking");
+
+                for x in linvel.get(0) {
+                    if *x > 0.0 {
+                        anim.flip_x = true;
+                    }
+                    if *x < 0.0 {
+                        anim.flip_x = false;
+                    }
+                }
             } else {
                 anim.set("standing");
             }
