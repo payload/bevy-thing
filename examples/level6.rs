@@ -14,6 +14,7 @@ fn app() -> AppBuilder {
         .add_plugin(RapierPhysicsPlugin)
         // .add_plugin(RapierRenderPlugin)
         .add_plugin(TextureAtlasUtilsPlugin)
+        .add_plugin(bevy_easings::EasingsPlugin)
         //
         .add_system(exit_on_esc_system.system())
         //
@@ -24,6 +25,7 @@ fn app() -> AppBuilder {
         .add_system(sprite_animation_update.system())
         .add_system(y_sort.system())
         .add_system(handle_actions.system())
+        .add_system(transfer_item.system())
         .add_event::<Action>();
     app
 }
@@ -359,32 +361,64 @@ fn handle_actions(
         match action {
             Action::TransferItem(item, from, to) => {
                 for from_trans in transform_query.get(*from) {
-                    for to_trans in transform_query.get(*to) {
-                        let from_pos = pos(from_trans);
-                        let _to_pos = pos(to_trans);
+                    let from_pos = pos(from_trans);
 
-                        let dress = commands.entity(SpriteSheetBundle {
-                            transform: Transform::from_xyz(0.0, 8.0, 0.0),
-                            texture_atlas: oven_atlas.0.clone(),
-                            ..Default::default()
-                        });
+                    let dress = commands.entity(SpriteSheetBundle {
+                        transform: Transform::from_xyz(0.0, 3.0, 0.0),
+                        texture_atlas: oven_atlas.0.clone(),
+                        sprite: TextureAtlasSprite::new(10),
+                        ..Default::default()
+                    });
 
-                        let mut anim =
-                            SpriteAnimation::new(dress, &[("fish", &[10]), ("bakedfish", &[11])]);
-                        anim.set(item);
+                    let mut anim =
+                        SpriteAnimation::new(dress, &[("fish", &[10]), ("bakedfish", &[11])]);
+                    anim.set(item);
 
-                        let item = commands.entity((
-                            "Item".to_string(),
-                            ItemMarker,
-                            Transform::from_translation(from_pos.extend(LAYER_10)),
-                            GlobalTransform::default(),
-                            anim,
-                        ));
+                    let entity = commands.entity((
+                        "Item".to_string(),
+                        ItemMarker,
+                        TransferItem(item, *from, *to),
+                        Transform::from_translation(from_pos.extend(LAYER_10)),
+                        GlobalTransform::default(),
+                        anim,
+                    ));
 
-                        commands.push_children(item, &[dress]);
-                    }
+                    commands.push_children(entity, &[dress]);
                 }
             }
+        }
+    }
+}
+
+struct TransferItem(&'static str, Entity, Entity);
+
+fn transfer_item(
+    commands: &mut Commands,
+    transfer_query: Query<(Entity, &TransferItem)>,
+    mut transform_query: Query<Mut<Transform>>,
+) {
+    for (item, transfer) in transfer_query.iter() {
+        if let Ok(to_trans) = transform_query.get_component(transfer.2) {
+            let to_pos = pos(to_trans);
+
+            if let Ok(mut item_trans) = transform_query.get_component_mut(item) {
+                let item_pos = pos(&item_trans);
+
+                if to_pos.distance_squared(item_pos) < 1.0 {
+                    // item transfered
+                    commands.despawn_recursive(item);
+                } else {
+                    let new_pos = item_pos.lerp(to_pos, 0.1);
+                    item_trans.translation.x = new_pos.x;
+                    item_trans.translation.y = new_pos.y;
+                }
+            } else {
+                // item has no transform
+                commands.despawn_recursive(item);
+            }
+        } else {
+            // destination has no transform
+            commands.despawn_recursive(item);
         }
     }
 }
