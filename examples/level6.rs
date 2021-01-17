@@ -8,7 +8,7 @@ use bevy::{core::Timer, input::system::exit_on_esc_system, prelude::*, utils::Ha
 use bevy_thing::{
     bevy_rapier_utils::*,
     commands_ext::CommandsExt,
-    entities::OvenState,
+    entities::*,
     systems::{inventory::Inventory, texture_atlas_utils::*},
 };
 
@@ -482,13 +482,6 @@ fn player_update(
             }
             _ => {}
         }
-    }
-}
-
-fn oven_update(time: Res<Time>, mut query: Query<Mut<OvenState>>) {
-    let delta = time.delta_seconds();
-    for mut oven in query.iter_mut() {
-        oven.baking_timer.tick(delta);
     }
 }
 
