@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bitflags::bitflags;
 
 pub mod player;
 

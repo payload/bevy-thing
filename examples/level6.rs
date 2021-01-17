@@ -33,7 +33,9 @@ fn app() -> AppBuilder {
         .add_system(transfer_item.system())
         .add_system(animation_change.system())
         .add_system(oven_update.system())
-        .add_system(inventory_widget_system.system())
+        .add_system(inventory_widget_selection_system.system())
+        .add_system(inventory_widget_items_system.system())
+        .add_system_to_stage(stage::EVENT, inventory_widget_selection_control.system())
         .add_event::<Action>();
     app
 }
@@ -182,9 +184,77 @@ fn setup(
 struct InventoryWidget {
     slots: Vec<Entity>,
     items: Vec<Entity>,
+    selection: Option<usize>,
 }
 
-fn inventory_widget_system(
+fn inventory_widget_selection_control(
+    keys: Res<Input<KeyCode>>,
+    mut widget_query: Query<Mut<InventoryWidget>>,
+) {
+    let mut selection = None;
+    for (index, code) in [
+        KeyCode::Key1,
+        KeyCode::Key2,
+        KeyCode::Key3,
+        KeyCode::Key4,
+        KeyCode::Key5,
+        KeyCode::Key6,
+        KeyCode::Key7,
+        KeyCode::Key8,
+    ]
+    .iter()
+    .enumerate()
+    {
+        if keys.just_pressed(*code) {
+            selection = Some(Some(index));
+        }
+    }
+
+    if keys.just_pressed(KeyCode::Key0) {
+        selection = Some(None);
+    }
+
+    for selection in selection {
+        for mut widget in widget_query.iter_mut() {
+            if widget.selection != selection {
+                widget.selection = selection;
+            }
+        }
+    }
+}
+
+fn inventory_widget_selection_system(
+    widget_query: Query<&InventoryWidget, Changed<InventoryWidget>>,
+    mut sprite_query: Query<(Mut<TextureAtlasSprite>, Mut<Transform>)>,
+) {
+    for widget in widget_query.iter() {
+        for (index, slot) in widget.slots.iter().enumerate() {
+            let texture_index = if Some(index) == widget.selection {
+                19
+            } else {
+                18
+            };
+
+            // TODO slot should keep a semantic state
+            // such that sprite.index and translation.z can be derived from that
+            // Model View distinction!
+
+            for (mut sprite, mut trans) in sprite_query.get_mut(*slot) {
+                if sprite.index != texture_index {
+                    sprite.index = texture_index;
+
+                    if texture_index == 19 {
+                        trans.translation.z += 0.1;
+                    } else {
+                        trans.translation.z -= 0.1;
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn inventory_widget_items_system(
     oven_atlas: Res<OvenAtlas>,
     commands: &mut Commands,
     mut widget_query: Query<(Mut<InventoryWidget>, &Inventory), Changed<Inventory>>,
