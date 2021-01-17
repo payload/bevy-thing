@@ -41,8 +41,7 @@ pub fn inventory_widget_selection_control(
     keys: Res<Input<KeyCode>>,
     mut widget_query: Query<Mut<InventoryWidget>>,
 ) {
-    let mut selection = None;
-    for (index, code) in [
+    let slot_selection = [
         KeyCode::Key1,
         KeyCode::Key2,
         KeyCode::Key3,
@@ -53,16 +52,16 @@ pub fn inventory_widget_selection_control(
         KeyCode::Key8,
     ]
     .iter()
+    .map(|c| keys.just_pressed(*c))
     .enumerate()
-    {
-        if keys.just_pressed(*code) {
-            selection = Some(Some(index));
-        }
-    }
+    .filter_map(|(index, pressed)| pressed.then_some(index))
+    .last();
 
-    if keys.just_pressed(KeyCode::Key0) {
-        selection = Some(None);
-    }
+    let selection = if keys.just_pressed(KeyCode::Key0) {
+        Some(None)
+    } else {
+        slot_selection.map(Some)
+    };
 
     for selection in selection {
         for mut widget in widget_query.iter_mut() {
