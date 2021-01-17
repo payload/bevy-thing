@@ -33,6 +33,7 @@ fn app() -> AppBuilder {
         .add_system(transfer_item.system())
         .add_system(animation_change.system())
         .add_system(oven_update.system())
+        .add_system(inventory_widget_system.system())
         .add_event::<Action>();
     app
 }
@@ -81,7 +82,7 @@ fn setup(
         cam
     });
 
-    //
+    // player
 
     let dress = commands.entity(SpriteSheetBundle {
         transform: Transform::from_translation(Vec3::new(0.0, 2.0, 0.0)),
@@ -120,7 +121,7 @@ fn setup(
 
     commands.push_children(player, &[dress, collider]);
 
-    //
+    // oven
 
     let dress = commands.entity(SpriteSheetBundle {
         texture_atlas: oven_atlas.clone(),
@@ -150,6 +151,69 @@ fn setup(
         GlobalTransform::default(),
     ));
     commands.push_children(oven, &[dress]);
+
+    // inventory widget
+
+    let mut widget = InventoryWidget::default();
+    let root = commands.entity((
+        Inventory {
+            items: vec!["fish", "", "bakedfish"],
+        },
+        Transform::from_xyz(0.0, 32.0, LAYER_10),
+        GlobalTransform::default(),
+    ));
+
+    for index in -4..4 {
+        let slot = commands.entity(SpriteSheetBundle {
+            transform: Transform::from_xyz(index as f32 * 7.0, 0.0, 0.0),
+            texture_atlas: oven_atlas.clone(),
+            sprite: TextureAtlasSprite::new(18),
+            ..Default::default()
+        });
+
+        widget.slots.push(slot);
+    }
+
+    commands.push_children(root, &widget.slots);
+    commands.insert_one(root, widget);
+}
+
+#[derive(Default)]
+struct InventoryWidget {
+    slots: Vec<Entity>,
+    items: Vec<Entity>,
+}
+
+fn inventory_widget_system(
+    oven_atlas: Res<OvenAtlas>,
+    commands: &mut Commands,
+    mut widget_query: Query<(Mut<InventoryWidget>, &Inventory), Changed<Inventory>>,
+) {
+    for (mut widget, inventory) in widget_query.iter_mut() {
+        for item in widget.items.drain(0..) {
+            commands.despawn_recursive(item);
+        }
+
+        for (index, item_name) in inventory.items.iter().enumerate() {
+            let sprite = match *item_name {
+                "fish" => Some(10),
+                "bakedfish" => Some(11),
+                _ => None,
+            };
+
+            if let Some(sprite) = sprite {
+                let item = commands.entity(SpriteSheetBundle {
+                    transform: Transform::from_xyz(0.0, 0.0, 0.1),
+                    texture_atlas: oven_atlas.0.clone(),
+                    sprite: TextureAtlasSprite::new(sprite),
+                    ..Default::default()
+                });
+
+                widget.items.push(item);
+                commands.push_children(widget.slots[index], &[item]);
+            }
+        }
+    }
 }
 
 struct ItemMarker;
