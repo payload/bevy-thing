@@ -33,6 +33,7 @@ fn app() -> AppBuilder {
         .add_system(transfer_item.system())
         .add_system(animation_change.system())
         .add_system(oven_update.system())
+        .add_system(inventory_widget_added.system())
         .add_system(inventory_widget_selection_system.system())
         .add_system(inventory_widget_items_system.system())
         .add_system_to_stage(stage::EVENT, inventory_widget_selection_control.system())
@@ -156,134 +157,19 @@ fn setup(
 
     // inventory widget
 
-    let mut widget = InventoryWidget::default();
-    let root = commands.entity((
+    commands.entity((
+        InventoryWidget {
+            tex_atlas: oven_atlas.clone(),
+            tex_unselected_index: 18,
+            tex_selected_index: 19,
+            ..Default::default()
+        },
         Inventory {
             items: vec!["fish", "", "bakedfish"],
         },
         Transform::from_xyz(0.0, 32.0, LAYER_10),
         GlobalTransform::default(),
     ));
-
-    for index in -4..4 {
-        let slot = commands.entity(SpriteSheetBundle {
-            transform: Transform::from_xyz(index as f32 * 7.0, 0.0, 0.0),
-            texture_atlas: oven_atlas.clone(),
-            sprite: TextureAtlasSprite::new(18),
-            ..Default::default()
-        });
-
-        widget.slots.push(slot);
-    }
-
-    commands.push_children(root, &widget.slots);
-    commands.insert_one(root, widget);
-}
-
-#[derive(Default)]
-struct InventoryWidget {
-    slots: Vec<Entity>,
-    items: Vec<Entity>,
-    selection: Option<usize>,
-}
-
-fn inventory_widget_selection_control(
-    keys: Res<Input<KeyCode>>,
-    mut widget_query: Query<Mut<InventoryWidget>>,
-) {
-    let mut selection = None;
-    for (index, code) in [
-        KeyCode::Key1,
-        KeyCode::Key2,
-        KeyCode::Key3,
-        KeyCode::Key4,
-        KeyCode::Key5,
-        KeyCode::Key6,
-        KeyCode::Key7,
-        KeyCode::Key8,
-    ]
-    .iter()
-    .enumerate()
-    {
-        if keys.just_pressed(*code) {
-            selection = Some(Some(index));
-        }
-    }
-
-    if keys.just_pressed(KeyCode::Key0) {
-        selection = Some(None);
-    }
-
-    for selection in selection {
-        for mut widget in widget_query.iter_mut() {
-            if widget.selection != selection {
-                widget.selection = selection;
-            }
-        }
-    }
-}
-
-fn inventory_widget_selection_system(
-    widget_query: Query<&InventoryWidget, Changed<InventoryWidget>>,
-    mut sprite_query: Query<(Mut<TextureAtlasSprite>, Mut<Transform>)>,
-) {
-    for widget in widget_query.iter() {
-        for (index, slot) in widget.slots.iter().enumerate() {
-            let texture_index = if Some(index) == widget.selection {
-                19
-            } else {
-                18
-            };
-
-            // TODO slot should keep a semantic state
-            // such that sprite.index and translation.z can be derived from that
-            // Model View distinction!
-
-            for (mut sprite, mut trans) in sprite_query.get_mut(*slot) {
-                if sprite.index != texture_index {
-                    sprite.index = texture_index;
-
-                    if texture_index == 19 {
-                        trans.translation.z += 0.1;
-                    } else {
-                        trans.translation.z -= 0.1;
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn inventory_widget_items_system(
-    oven_atlas: Res<OvenAtlas>,
-    commands: &mut Commands,
-    mut widget_query: Query<(Mut<InventoryWidget>, &Inventory), Changed<Inventory>>,
-) {
-    for (mut widget, inventory) in widget_query.iter_mut() {
-        for item in widget.items.drain(0..) {
-            commands.despawn_recursive(item);
-        }
-
-        for (index, item_name) in inventory.items.iter().enumerate() {
-            let sprite = match *item_name {
-                "fish" => Some(10),
-                "bakedfish" => Some(11),
-                _ => None,
-            };
-
-            if let Some(sprite) = sprite {
-                let item = commands.entity(SpriteSheetBundle {
-                    transform: Transform::from_xyz(0.0, 0.0, 0.1),
-                    texture_atlas: oven_atlas.0.clone(),
-                    sprite: TextureAtlasSprite::new(sprite),
-                    ..Default::default()
-                });
-
-                widget.items.push(item);
-                commands.push_children(widget.slots[index], &[item]);
-            }
-        }
-    }
 }
 
 struct ItemMarker;
