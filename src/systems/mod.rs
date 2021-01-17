@@ -1,8 +1,8 @@
 pub mod context_map;
+pub mod inventory;
 pub mod jabber;
 pub mod steering;
 pub mod texture_atlas_utils;
-pub mod inventory;
 
 ///
 /// inspiration by Game Endeavor https://www.youtube.com/watch?v=6BrZryMz-ac
@@ -17,11 +17,13 @@ pub fn steer_along_path(my_trans: &Transform) -> Vec2 {
     let interest = interest(my_trans, Some(&get_direction));
     let danger = danger(my_trans, &[]);
 
-    let _c = ContextMap::new(
-        interest
-            .weights
-            .map_with_location(|r, _c, v| if danger.weights[r] > 0.0 { 0.0 } else { v })
-    );
+    let _c = ContextMap::new(interest.weights.map_with_location(|r, _c, v| {
+        if danger.weights[r] > 0.0 {
+            0.0
+        } else {
+            v
+        }
+    }));
 
     interest.direction()
 }

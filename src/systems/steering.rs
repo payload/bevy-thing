@@ -119,11 +119,7 @@ fn flocks_update_system(
     flocks: ResMut<Flocks>,
     mut boids_q: Query<(Mut<Boid>, Mut<Transform>)>,
 ) {
-    calculate_averages(
-        &flocks,
-        &mut averages,
-        &mut boids_q.iter_mut(),
-    );
+    calculate_averages(&flocks, &mut averages, &mut boids_q.iter_mut());
 
     for average in averages.iter_mut() {
         let boids = average.boids.clone();

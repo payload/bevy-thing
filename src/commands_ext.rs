@@ -13,6 +13,7 @@ pub trait CommandsExt {
         T: DynamicBundle + Send + Sync + 'static;
 
     fn entity(&mut self, bundle: impl DynamicBundle + Send + Sync + 'static) -> Entity;
+    fn unwrap_entity(&self) -> Entity;
 }
 
 impl CommandsExt for Commands {
@@ -45,5 +46,9 @@ impl CommandsExt for Commands {
 
     fn entity(&mut self, bundle: impl DynamicBundle + Send + Sync + 'static) -> Entity {
         self.spawn(bundle).current_entity().unwrap()
+    }
+
+    fn unwrap_entity(&self) -> Entity {
+        self.current_entity().unwrap()
     }
 }

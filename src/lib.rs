@@ -1,6 +1,5 @@
 #![feature(bool_to_option)]
 
-
 mod bitpack;
 mod bitpack_map;
 mod bundle_utils;

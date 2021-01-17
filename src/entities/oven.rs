@@ -1,9 +1,11 @@
 use bevy::prelude::*;
 
+use crate::systems::inventory::{ItemKind, Items};
+
 pub struct OvenState {
     pub baking_timer: Timer,
-    pub item: Option<&'static str>,
-    pub baked_item: Option<&'static str>,
+    pub item: Option<ItemKind>,
+    pub baked_item: Option<ItemKind>,
     pub on_fire: bool,
 }
 
@@ -30,7 +32,7 @@ impl OvenState {
         }
     }
 
-    pub fn interact(&mut self) -> Option<&'static str> {
+    pub fn interact(&mut self, items: &Items) -> Option<ItemKind> {
         let fire = self.on_fire;
         let baked = self.baking_timer.finished();
         let item = self.item.is_some();
@@ -47,8 +49,8 @@ impl OvenState {
             }
             (true, _, false) => {
                 self.baking_timer.reset();
-                self.item = Some("fish");
-                self.baked_item = Some("bakedfish");
+                self.item = Some(items.fish.clone());
+                self.baked_item = Some(items.baked_fish.clone());
                 None
             }
             (true, false, true) => {

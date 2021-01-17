@@ -38,7 +38,8 @@ fn app() -> AppBuilder {
         .add_system(inventory_widget_selection_system.system())
         .add_system(inventory_widget_items_system.system())
         .add_system_to_stage(stage::EVENT, inventory_widget_selection_control.system())
-        .add_event::<Action>();
+        .add_event::<Action>()
+        .add_asset::<Item>();
     app
 }
 
@@ -51,6 +52,7 @@ fn setup(
     mut rapier: ResMut<RapierConfiguration>,
     mut clear_color: ResMut<ClearColor>,
     mut atlases: ResMut<Assets<TextureAtlas>>,
+    mut item_assets: ResMut<Assets<Item>>,
 ) {
     rapier.gravity.y = 0.0;
     clear_color.0 = Color::rgb(0.133, 0.137, 0.137);
@@ -77,10 +79,7 @@ fn setup(
         human_atlas: human_atlas.clone(),
         oven_atlas: oven_atlas.clone(),
     };
-    let items = Items::new(&atlases);
-
-    commands.insert_resource(atlases);
-    commands.insert_resource(items);
+    let items = Items::new(&mut item_assets, &atlases);
 
     commands.spawn({
         let mut cam = Camera2dBundle::default();
@@ -169,11 +168,14 @@ fn setup(
             ..Default::default()
         },
         Inventory {
-            items: vec!["fish", "", "bakedfish"],
+            items: vec![items.fish.clone(), items.baked_fish.clone()],
         },
         Transform::from_xyz(0.0, 32.0, LAYER_10),
         GlobalTransform::default(),
     ));
+
+    commands.insert_resource(atlases);
+    commands.insert_resource(items);
 }
 
 struct ItemMarker;
@@ -343,6 +345,7 @@ fn player_update(
         (Changed<PlayerState>, With<PlayerMarker>),
     >,
     mut oven_query: Query<(Entity, &Transform, Mut<OvenState>)>,
+    items: Res<Items>,
 ) {
     for (player, state, trans, body) in player_query.iter() {
         match state {
@@ -364,7 +367,7 @@ fn player_update(
                 for (oven, oven_trans, mut oven_state) in oven_query.iter_mut() {
                     if pos(trans).distance_squared(pos(oven_trans)) < 64.0 {
                         // interact with oven
-                        for item in oven_state.interact() {
+                        for item in oven_state.interact(&items) {
                             actions.send(Action::TransferItem(item, oven, player));
                         }
                     }
@@ -385,7 +388,7 @@ fn animation_change(mut query: Query<(&OvenState, Mut<SpriteAnimation>)>) {
 }
 
 enum Action {
-    TransferItem(&'static str, Entity, Entity),
+    TransferItem(ItemKind, Entity, Entity),
 }
 
 fn handle_actions(
@@ -393,7 +396,7 @@ fn handle_actions(
     transform_query: Query<&Transform>,
     mut reader: Local<EventReader<Action>>,
     actions: Res<Events<Action>>,
-    atlases: Res<TexAtlases>,
+    items: Res<Assets<Item>>,
 ) {
     for action in reader.iter(&actions) {
         match action {
@@ -401,36 +404,32 @@ fn handle_actions(
                 for from_trans in transform_query.get(*from) {
                     let from_pos = pos(from_trans);
 
-                    let dress = commands.entity(SpriteSheetBundle {
-                        transform: Transform::from_xyz(0.0, 3.0, 0.0),
-                        texture_atlas: atlases.oven_atlas.clone(),
-                        sprite: TextureAtlasSprite::new(10),
-                        ..Default::default()
-                    });
-
-                    let mut anim =
-                        SpriteAnimation::new(dress, &[("fish", &[10]), ("bakedfish", &[11])]);
-                    anim.set(item);
-
-                    let entity = commands.entity((
+                    commands.spawn((
                         "Item".to_string(),
                         ItemMarker,
-                        TransferItem(item, *from, *to),
+                        TransferItem(item.clone(), *from, *to),
                         Transform::from_translation(from_pos.extend(LAYER_10)),
                         GlobalTransform::default(),
-                        anim,
                     ));
 
-                    commands.push_children(entity, &[dress]);
+                    for item in items.get(item) {
+                        commands.with_child(SpriteSheetBundle {
+                            transform: Transform::from_xyz(0.0, 3.0, 0.0),
+                            texture_atlas: item.tex_atlas.clone(),
+                            sprite: TextureAtlasSprite::new(item.tex_sprite),
+                            ..Default::default()
+                        });
+                    }
                 }
             }
         }
     }
 }
 
-struct TransferItem(&'static str, Entity, Entity);
+struct TransferItem(ItemKind, Entity, Entity);
 
 fn transfer_item(
+    items: Res<Assets<Item>>,
     commands: &mut Commands,
     transfer_query: Query<(Entity, &TransferItem)>,
     added_transfer_query: Query<&TransferItem, Added<TransferItem>>,
@@ -442,15 +441,18 @@ fn transfer_item(
             println!(
                 "{} has {} {}",
                 name.unwrap(),
-                inventory.count(transfer.0),
-                transfer.0
+                inventory.count(&transfer.0),
+                items
+                    .get(&transfer.0)
+                    .map(|i| i.name)
+                    .unwrap_or("UNDEFINED")
             );
         }
     };
 
     for transfer in added_transfer_query.iter() {
         for (name, mut inventory) in inventory_query.get_mut(transfer.1) {
-            inventory.take(transfer.0);
+            inventory.take(&transfer.0);
             log(name, inventory, transfer);
         }
     }
@@ -467,7 +469,7 @@ fn transfer_item(
                     // item transfered
                     commands.despawn_recursive(item);
                     for (name, mut inventory) in inventory_query.get_mut(transfer.2) {
-                        inventory.put(transfer.0);
+                        inventory.put(&transfer.0);
                         log(name, inventory, transfer);
                     }
                 } else {

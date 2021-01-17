@@ -1,6 +1,9 @@
 use bevy::prelude::*;
 
-use crate::{commands_ext::CommandsExt, systems::inventory::{Inventory, Items}};
+use crate::{
+    commands_ext::CommandsExt,
+    systems::inventory::{Inventory, Item},
+};
 
 #[derive(Default)]
 pub struct InventoryWidget {
@@ -99,6 +102,7 @@ pub fn inventory_widget_selection_system(
 
 pub fn inventory_widget_items_system(
     commands: &mut Commands,
+    items: Res<Assets<Item>>,
     mut widget_query: Query<(Mut<InventoryWidget>, &Inventory), Changed<Inventory>>,
 ) {
     for (mut widget, inventory) in widget_query.iter_mut() {
@@ -106,23 +110,15 @@ pub fn inventory_widget_items_system(
             commands.despawn_recursive(item);
         }
 
-        for (index, item_name) in inventory.items.iter().enumerate() {
-            let sprite = match *item_name {
-                "fish" => Some(10),
-                "bakedfish" => Some(11),
-                _ => None,
-            };
+        for (index, item) in inventory.items.iter().enumerate() {
+            for item in items.get(item) {
+                let item_entity = commands
+                    .spawn(item.sprite_sheet_bundle())
+                    .with(Transform::from_xyz(0.0, 0.0, 0.1))
+                    .unwrap_entity();
 
-            if let Some(sprite) = sprite {
-                let item = commands.entity(SpriteSheetBundle {
-                    transform: Transform::from_xyz(0.0, 0.0, 0.1),
-                    texture_atlas: widget.tex_atlas.clone(),
-                    sprite: TextureAtlasSprite::new(sprite),
-                    ..Default::default()
-                });
-
-                widget.items.push(item);
-                commands.push_children(widget.slots[index], &[item]);
+                widget.items.push(item_entity);
+                commands.push_children(widget.slots[index], &[item_entity]);
             }
         }
     }

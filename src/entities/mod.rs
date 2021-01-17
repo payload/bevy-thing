@@ -1,6 +1,6 @@
-pub mod player;
-mod oven;
 mod inventory_widget;
+mod oven;
+pub mod player;
 
-pub use oven::*;
 pub use inventory_widget::*;
+pub use oven::*;
