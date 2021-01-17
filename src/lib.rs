@@ -10,6 +10,7 @@ mod map_asset;
 mod rapier_debug_render;
 mod utils;
 
+pub mod assets;
 pub mod bevy_rapier_utils;
 pub mod commands_ext;
 pub mod entities;

@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::{commands_ext::CommandsExt, systems::inventory::Inventory};
+use crate::{commands_ext::CommandsExt, systems::inventory::{Inventory, Items}};
 
 #[derive(Default)]
 pub struct InventoryWidget {
@@ -76,10 +76,11 @@ pub fn inventory_widget_selection_system(
 ) {
     for widget in widget_query.iter() {
         for (index, slot) in widget.slots.iter().enumerate() {
-            let texture_index = if Some(index) == widget.selection {
-                19
+            let selected = Some(index) == widget.selection;
+            let tex_index = if selected {
+                widget.tex_selected_index
             } else {
-                18
+                widget.tex_unselected_index
             };
 
             // TODO slot should keep a semantic state
@@ -87,14 +88,9 @@ pub fn inventory_widget_selection_system(
             // Model View distinction!
 
             for (mut sprite, mut trans) in sprite_query.get_mut(*slot) {
-                if sprite.index != texture_index {
-                    sprite.index = texture_index;
-
-                    if texture_index == 19 {
-                        trans.translation.z += 0.1;
-                    } else {
-                        trans.translation.z -= 0.1;
-                    }
+                if sprite.index != tex_index {
+                    sprite.index = tex_index;
+                    trans.translation.z += if selected { 0.1 } else { -0.1 };
                 }
             }
         }

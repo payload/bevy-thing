@@ -6,10 +6,11 @@ use std::time::Duration;
 
 use bevy::{core::Timer, input::system::exit_on_esc_system, prelude::*, utils::HashMap};
 use bevy_thing::{
+    assets::*,
     bevy_rapier_utils::*,
-    commands_ext::CommandsExt,
+    commands_ext::*,
     entities::*,
-    systems::{inventory::Inventory, texture_atlas_utils::*},
+    systems::{inventory::*, texture_atlas_utils::*},
 };
 
 fn app() -> AppBuilder {
@@ -44,9 +45,6 @@ fn app() -> AppBuilder {
 const LAYER_0: f32 = 500.0;
 const LAYER_10: f32 = LAYER_0 + 10.0;
 
-struct HumanAtlas(Handle<TextureAtlas>);
-struct OvenAtlas(Handle<TextureAtlas>);
-
 fn setup(
     commands: &mut Commands,
     asset_server: Res<AssetServer>,
@@ -75,8 +73,14 @@ fn setup(
         commands,
     );
 
-    commands.insert_resource(HumanAtlas(human_atlas.clone()));
-    commands.insert_resource(OvenAtlas(oven_atlas.clone()));
+    let atlases = TexAtlases {
+        human_atlas: human_atlas.clone(),
+        oven_atlas: oven_atlas.clone(),
+    };
+    let items = Items::new(&atlases);
+
+    commands.insert_resource(atlases);
+    commands.insert_resource(items);
 
     commands.spawn({
         let mut cam = Camera2dBundle::default();
@@ -389,7 +393,7 @@ fn handle_actions(
     transform_query: Query<&Transform>,
     mut reader: Local<EventReader<Action>>,
     actions: Res<Events<Action>>,
-    oven_atlas: Res<OvenAtlas>,
+    atlases: Res<TexAtlases>,
 ) {
     for action in reader.iter(&actions) {
         match action {
@@ -399,7 +403,7 @@ fn handle_actions(
 
                     let dress = commands.entity(SpriteSheetBundle {
                         transform: Transform::from_xyz(0.0, 3.0, 0.0),
-                        texture_atlas: oven_atlas.0.clone(),
+                        texture_atlas: atlases.oven_atlas.clone(),
                         sprite: TextureAtlasSprite::new(10),
                         ..Default::default()
                     });
